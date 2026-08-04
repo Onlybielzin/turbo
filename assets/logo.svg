@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="turboRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9E2A1A"/>
+      <stop offset="1" stop-color="#5C160D"/>
+    </linearGradient>
+  </defs>
+  <circle cx="256" cy="256" r="240" fill="url(#turboRed)"/>
+  <path d="M150 150 L232 150 L256 300 L280 150 L362 150 L292 372 L220 372 Z"
+        fill="#F7F5F2"/>
+</svg>
