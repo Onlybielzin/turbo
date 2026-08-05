@@ -64,5 +64,5 @@ jobs:
           releaseName: "Turbo ${{ github.ref_name }}"
           releaseBody: "Instaladores Linux (.AppImage e .deb) gerados automaticamente pelo CI. Baixe abaixo."
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
           args: "--bundles appimage,deb"
