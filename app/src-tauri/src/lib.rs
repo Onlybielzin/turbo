@@ -8,6 +8,8 @@
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::mpsc::sync_channel;
+use std::sync::Arc;
 use std::sync::Mutex;
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
@@ -19,6 +21,9 @@ struct PtySession {
     writer: Box<dyn Write + Send>,
     master: Box<dyn MasterPty + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    /// Accumulates all PTY output for MCP tool return in Phase 4 (spawn_agent result).
+    #[allow(dead_code)]
+    stdout_buf: Arc<Mutex<Vec<u8>>>,
 }
 
 #[derive(Default)]
@@ -89,23 +94,48 @@ fn pty_spawn(
 
     let id = manager.next_id.fetch_add(1, Ordering::SeqCst);
 
-    // portable-pty's reader is blocking, so it runs on a dedicated OS thread
-    // (never on the async runtime). Raw bytes go straight to the frontend.
+    // stdout_buf accumulates every byte from the PTY for use by the MCP
+    // spawn_agent return path in Phase 4.
+    let stdout_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+    let stdout_buf_reader = Arc::clone(&stdout_buf);
+
+    // bounded channel: read thread -> forwarder thread -> Channel (frontend).
+    // Capacity 64 means the read thread drops chunks when the frontend is slow
+    // (backpressure), but it NEVER blocks — so it always drains the PTY master fd.
+    let (tx, rx) = sync_channel::<Vec<u8>>(64);
+
+    // Read thread: portable-pty's reader is blocking, so this must be an OS thread.
+    // Fan-out: every chunk goes to stdout_buf (accumulator, infallible) and is
+    // attempted on the bounded channel (drop-on-full so the read never stalls).
     let app_reader = app.clone();
     std::thread::spawn(move || {
         let mut buf = [0u8; 8192];
         loop {
             match reader.read(&mut buf) {
-                Ok(0) => break,
+                Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    if on_data.send(buf[..n].to_vec()).is_err() {
-                        break;
+                    let chunk = &buf[..n];
+                    // Always accumulate — lock poisoning must not stop the read loop.
+                    if let Ok(mut acc) = stdout_buf_reader.lock() {
+                        acc.extend_from_slice(chunk);
                     }
+                    // Drop the chunk if the channel is full (frontend too slow).
+                    let _ = tx.try_send(chunk.to_vec());
                 }
-                Err(_) => break,
             }
         }
+        // tx drops here, which closes the channel and terminates the forwarder.
         let _ = app_reader.emit("pty_exit", id);
+    });
+
+    // Forwarder thread: drains the bounded channel and sends chunks to the frontend
+    // Channel. Exits naturally when tx is dropped (rx.iter() returns).
+    std::thread::spawn(move || {
+        for chunk in rx {
+            if on_data.send(chunk).is_err() {
+                break;
+            }
+        }
     });
 
     // Reap the child so it never becomes a zombie.
@@ -120,6 +150,7 @@ fn pty_spawn(
             writer,
             master,
             killer,
+            stdout_buf,
         },
     );
 
