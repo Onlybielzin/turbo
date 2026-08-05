@@ -90,4 +90,4 @@ Turbo é um cockpit visual pessoal: canvas infinito estilo Figma onde cada nó �
 | 1. Foundation — Tauri + PTY | 1/1 | Complete   | 2026-08-05 |
 | 2. MCP Spike (binário isolado) | 1/1 | Complete   | 2026-08-05 |
 | 3. Canvas + Terminal Nodes + Grupos | 1/1 | Complete   | 2026-08-05 |
-| 4. Orquestração MCP Integrada | 1/1 | Complete (GUI verify pending) | 2026-08-05 |
+| 4. Orquestração MCP Integrada | 1/1 | Complete   | 2026-08-05 |
