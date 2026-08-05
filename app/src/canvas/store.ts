@@ -19,7 +19,9 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   addEdge,
+  MarkerType,
 } from "@xyflow/react";
+import { childPosition, CHILD_NODE_WIDTH, CHILD_NODE_HEIGHT } from "./layout";
 
 export type NodeStatus = "running" | "ok" | "error";
 
@@ -55,6 +57,15 @@ interface CanvasState {
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
   addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string) => string;
+  /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
+   *  Places it in a radial fan around the parent, adds a parent→child edge.
+   *  Returns the new child node id. */
+  addChildNode: (params: {
+    groupId: string;
+    parentNodeId: string;
+    label: string;
+    childPtyId: string | null;
+  }) => string;
   removeNode: (nodeId: string) => void;
   updateNodeStatus: (nodeId: string, status: NodeStatus) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
@@ -147,6 +158,67 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     };
 
     set({ nodes: [...nodes, terminalNode] });
+    return nodeId;
+  },
+
+  addChildNode: ({ groupId, parentNodeId, label, childPtyId }) => {
+    const { nodes, edges } = get();
+    const nodeId = `terminal-child-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Find the parent node to compute radial position relative to it.
+    const parentNode = nodes.find((n) => n.id === parentNodeId);
+    const parentPos = parentNode?.position ?? { x: 100, y: 100 };
+
+    // Count existing children of this parent to spread the fan correctly.
+    // We include the one being added (+1).
+    const existingSiblings = nodes.filter(
+      (n) => n.parentId === groupId && n.id !== parentNodeId &&
+        edges.some((e) => e.source === parentNodeId && e.target === n.id)
+    );
+    const childIndex = existingSiblings.length;
+    const totalChildren = existingSiblings.length + 1;
+
+    const pos = childPosition(parentPos, childIndex, totalChildren);
+
+    const childNode: AppNode = {
+      id: nodeId,
+      type: "terminal",
+      parentId: groupId,
+      extent: "parent",
+      position: pos,
+      data: {
+        label,
+        ptyId: childPtyId !== null ? Number(childPtyId) : null,
+        status: "running" as NodeStatus,
+      } as TerminalNodeData,
+      style: {
+        width: CHILD_NODE_WIDTH,
+        height: CHILD_NODE_HEIGHT,
+      },
+    };
+
+    // Parent→child directed edge
+    const edge: Edge = {
+      id: `edge-${parentNodeId}-${nodeId}`,
+      source: parentNodeId,
+      target: nodeId,
+      type: "smoothstep",
+      animated: true,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: "var(--brand-a)",
+      },
+      style: {
+        stroke: "var(--brand-a)",
+        strokeWidth: 2,
+      },
+    };
+
+    set({
+      nodes: [...nodes, childNode],
+      edges: [...edges, edge],
+    });
+
     return nodeId;
   },
 
