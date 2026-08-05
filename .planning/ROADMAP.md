@@ -23,7 +23,8 @@ Turbo é um cockpit visual pessoal: canvas infinito estilo Figma onde cada nó �
   3. Digitação de teclado no frontend chega ao processo PTY (round-trip funciona: digitar `echo hello` exibe `hello`)
   4. Redimensionar o terminal envia SIGWINCH ao PTY sem causar loop de resize
   5. Fechar o app encerra todos os PTYs filhos — `ps aux | grep claude | grep -v grep` retorna zero resultados
-**Plans**: TBD
+**Plans**: 1 plan
+- [ ] 01-01-PLAN.md — Fechar gaps D-04 (fan-out + backpressure) e FND-05 (debounce) e verificar o round-trip PTY contra os 5 success criteria
 
 ### Phase 2: MCP Spike (binário isolado)
 **Goal**: Um binário standalone prova que spawn_agent bloqueante funciona com rmcp + portable-pty no mesmo runtime tokio — com progress notifications evitando timeout e depth guard bloqueando recursão — antes de qualquer linha de canvas ou integração Tauri
