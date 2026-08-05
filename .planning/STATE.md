@@ -5,14 +5,14 @@ milestone_name: milestone
 current_phase: 1
 current_phase_name: Foundation — Tauri + PTY
 status: planning
-stopped_at: Phase 1 implemented (Tauri+PTY, compiles); phases 2-4 pending
-last_updated: "2026-08-05T01:44:37.942Z"
+stopped_at: Phase 2 spike implemented (compiles, server boots; progress notifications ORCH-05 pending). Phases 3-4 planned, not executed.
+last_updated: "2026-08-05T11:35:40.921Z"
 last_activity: 2026-08-04
 last_activity_desc: Roadmap criado; 25 requisitos mapeados em 4 fases
 progress:
   total_phases: 4
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -81,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-05T01:44:37.936Z
-Stopped at: Phase 1 implemented (Tauri+PTY, compiles); phases 2-4 pending
-Resume file: app/src-tauri/src/lib.rs
+Last session: 2026-08-05T11:35:40.915Z
+Stopped at: Phase 2 spike implemented (compiles, server boots; progress notifications ORCH-05 pending). Phases 3-4 planned, not executed.
+Resume file: spike/mcp-spike/README.md
