@@ -5,22 +5,22 @@
  * - Position: absolute top:8px left:8px z-index:10
  * - "Novo grupo" button: height 28px, padding 0 12px, 12px/400
  *
- * Phase 4: "Novo grupo" now calls the `create_group` Tauri command which:
- *   1. Writes `.mcp.json` into the cwd AFTER the MCP server health-check (D-02).
- *   2. Launches `claude` as the parent agent in that cwd.
- *   3. Returns the PTY id for the parent TerminalNode.
- *
- * The group node and parent TerminalNode are created in the store first (for
- * immediate canvas feedback), then the PTY id is wired back via setPtyId.
+ * Phase 4 flow for "Novo grupo":
+ *   1. Create the GroupFrame node immediately (canvas feedback).
+ *   2. Await `create_group` Tauri command — writes `.mcp.json` AFTER health-check
+ *      (D-02 ordering). Does NOT spawn claude.
+ *   3. Create the parent TerminalNode with command="claude" and TURBO_GROUP_ID env.
+ *      usePty spawns claude AFTER .mcp.json exists — D-02 ordering guaranteed
+ *      because steps 1-2 complete before step 3 (addTerminalNode triggers mount).
  */
 import { useCallback } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useCanvasStore } from "./store";
 import "./Toolbar.css";
 
 export function Toolbar() {
-  const { addGroup, addTerminalNode, setPtyId } = useCanvasStore();
+  const { addGroup, addTerminalNode } = useCanvasStore();
 
   const handleNewGroup = useCallback(async () => {
     // Open native directory picker
@@ -34,37 +34,27 @@ export function Toolbar() {
 
     const cwd = selected;
 
-    // Create the group node and a placeholder parent terminal node immediately
-    // so the user sees canvas feedback before the PTY is ready.
+    // 1. Create the group frame immediately for visual feedback.
     const groupId = addGroup(cwd);
-    const nodeId = addTerminalNode(groupId, null, cwd, "claude");
-
-    // Channel to stream PTY output to this TerminalNode's xterm instance.
-    // The TerminalNode's usePty hook also creates a channel — here we create a
-    // separate one for the create_group command so Rust can stream the parent
-    // claude output. The usePty hook on the node will open its own channel on mount.
-    //
-    // NOTE: Because usePty opens its own channel on mount, we use create_group
-    // only to trigger the .mcp.json write + claude spawn. The PTY id returned
-    // is wired back so usePty can communicate with the correct session.
-    const onData = new Channel<number[]>();
-    onData.onmessage = () => {
-      // Output is forwarded by usePty's own channel — this channel just keeps
-      // the Rust side happy (create_group requires an on_data channel param).
-    };
 
     try {
-      const ptyId = await invoke<number>("create_group", {
-        groupId,
-        cwd,
-        onData,
-      });
-      // Wire the real PTY id back to the node so usePty can communicate with it.
-      setPtyId(nodeId, ptyId);
+      // 2. create_group: writes .mcp.json only (D-02), does NOT spawn claude.
+      //    Awaiting this guarantees .mcp.json exists before usePty starts claude.
+      await invoke("create_group", { groupId, cwd });
+
+      // 3. Add the parent TerminalNode with claude + group env vars.
+      //    usePty spawns claude with TURBO_GROUP_ID so spawn_agent calls are
+      //    routed to the correct GroupFrame (GRP-03).
+      addTerminalNode(groupId, null, cwd, "claude", [
+        ["TURBO_GROUP_ID", groupId],
+        ["TURBO_MCP_DEPTH", "0"],
+      ]);
     } catch (err) {
       console.error("[Turbo] create_group failed:", err);
+      // Fallback: open a shell so the user still has a terminal.
+      addTerminalNode(groupId, null, cwd, undefined);
     }
-  }, [addGroup, addTerminalNode, setPtyId]);
+  }, [addGroup, addTerminalNode]);
 
   return (
     <div className="canvas-toolbar">

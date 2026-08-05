@@ -34,6 +34,8 @@ export interface TerminalNodeData extends Record<string, unknown> {
   /** Command to launch in the PTY. Defaults to shell if omitted. */
   command?: string;
   args?: string[];
+  /** Extra env vars to inject into the PTY process (e.g. TURBO_GROUP_ID). */
+  env?: [string, string][];
 }
 
 /** Extra data carried by a GroupFrame node */
@@ -56,7 +58,7 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][]) => string;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -118,7 +120,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][]): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -150,6 +152,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         status: "running" as NodeStatus,
         cwd,
         command,
+        env,
       } as TerminalNodeData,
       style: {
         width: 480,
@@ -161,7 +164,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     return nodeId;
   },
 
-  addChildNode: ({ groupId, parentNodeId, label, childPtyId }) => {
+  addChildNode: ({ groupId, parentNodeId, label, childPtyId: _childPtyId }) => {
     const { nodes, edges } = get();
     const nodeId = `terminal-child-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -188,7 +191,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       position: pos,
       data: {
         label,
-        ptyId: childPtyId !== null ? Number(childPtyId) : null,
+        // childPtyId is a UUID string from the MCP handler — not a PtyManager id.
+        // Child nodes are read-only display nodes (output returns to the parent via
+        // MCP response, not xterm). Keep ptyId null so usePty doesn't try to attach.
+        ptyId: null,
         status: "running" as NodeStatus,
       } as TerminalNodeData,
       style: {

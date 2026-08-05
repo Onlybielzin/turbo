@@ -41,8 +41,11 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     command: data.command,
     args: data.args as string[] | undefined,
     cwd: data.cwd,
+    env: data.env as [string, string][] | undefined,
     onStatusChange: handleStatusChange,
     onPtyReady: handlePtyReady,
+    // No existingPtyId needed: create_group no longer pre-spawns claude.
+    // usePty always spawns the PTY itself, using env vars for group context.
   });
 
   const handleKill = useCallback(() => {

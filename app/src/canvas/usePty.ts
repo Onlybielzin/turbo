@@ -34,8 +34,16 @@ interface UsePtyOptions {
   command?: string;
   args?: string[];
   cwd?: string;
+  /** Extra env vars injected into the spawned PTY process (e.g. TURBO_GROUP_ID). */
+  env?: [string, string][];
   onStatusChange?: (status: NodeStatus) => void;
   onPtyReady?: (ptyId: number) => void;
+  /**
+   * When set, skip pty_spawn and attach directly to this existing PTY session.
+   * Used by nodes created via create_group (parent agents) where the PTY is
+   * already running — prevents the duplicate-spawn bug.
+   */
+  existingPtyId?: number | null;
 }
 
 interface UsePtyResult {
@@ -50,8 +58,10 @@ export function usePty({
   command,
   args,
   cwd,
+  env,
   onStatusChange,
   onPtyReady,
+  existingPtyId,
 }: UsePtyOptions): UsePtyResult {
   const ptyIdRef = useRef<number | null>(null);
   const disposedRef = useRef(false);
@@ -99,7 +109,7 @@ export function usePty({
       /* element not measurable yet */
     }
 
-    // ── PTY spawn ──────────────────────────────────────────────────────────
+    // ── PTY spawn (or attach to existing) ────────────────────────────────
     let ptyId: number | null = null;
 
     const onData = new Channel<number[]>();
@@ -115,27 +125,43 @@ export function usePty({
         if (cmd) spawnArgs.command = cmd;
         if (cmdArgs) spawnArgs.args = cmdArgs;
         if (cwd) spawnArgs.cwd = cwd;
+        if (env && env.length > 0) spawnArgs.env = env;
         return invoke<number>("pty_spawn", spawnArgs);
       };
 
       try {
-        try {
-          ptyId = await spawnPty(command, args);
-        } catch (spawnErr) {
-          // If the requested command wasn't found, fall back to the default shell
-          if (command && String(spawnErr).toLowerCase().includes("no such file")) {
-            term.writeln(
-              `\r\n\x1b[90m[claude não encontrado no PATH — abrindo shell]\x1b[0m`
-            );
-            ptyId = await spawnPty(); // spawn default shell
-          } else {
-            throw spawnErr;
+        if (existingPtyId != null) {
+          // Attach to the already-running PTY (e.g. parent agent from create_group).
+          // We open a new output channel from the existing session so xterm renders output.
+          ptyId = existingPtyId;
+          try {
+            await invoke("pty_attach_channel", { id: ptyId, onData });
+          } catch {
+            // pty_attach_channel not yet implemented — no-op; output already
+            // streams via the channel created inside create_group.
+          }
+        } else {
+          try {
+            ptyId = await spawnPty(command, args);
+          } catch (spawnErr) {
+            // If the requested command wasn't found, fall back to the default shell
+            if (command && String(spawnErr).toLowerCase().includes("no such file")) {
+              term.writeln(
+                `\r\n\x1b[90m[claude não encontrado no PATH — abrindo shell]\x1b[0m`
+              );
+              ptyId = await spawnPty(); // spawn default shell
+            } else {
+              throw spawnErr;
+            }
           }
         }
 
         ptyIdRef.current = ptyId;
         if (disposedRef.current) {
-          void invoke("pty_kill", { id: ptyId });
+          if (existingPtyId == null) {
+            // Only kill if we spawned this PTY ourselves
+            void invoke("pty_kill", { id: ptyId });
+          }
           return;
         }
         onPtyReady?.(ptyId);
@@ -183,12 +209,15 @@ export function usePty({
 
 
     // ── Kill function ─────────────────────────────────────────────────────
+    const isExternalPty = existingPtyId != null;
     killRef.current = () => {
       if (ptyIdRef.current !== null) {
+        // Always kill — both self-spawned and externally-created PTYs can be killed
         void invoke("pty_kill", { id: ptyIdRef.current });
         ptyIdRef.current = null;
       }
     };
+    void isExternalPty; // suppress unused warning
 
     // ── WebGL renderer switching ──────────────────────────────────────────
     activateWebGLRef.current = () => {
@@ -257,6 +286,7 @@ export function usePty({
       }
 
       if (ptyIdRef.current !== null) {
+        // Kill the PTY regardless of whether we spawned it or attached to an existing one
         void invoke("pty_kill", { id: ptyIdRef.current });
         ptyIdRef.current = null;
       }
