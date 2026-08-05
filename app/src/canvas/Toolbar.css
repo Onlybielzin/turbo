@@ -64,3 +64,20 @@
   background: var(--panel);
   color: var(--text);
 }
+
+.canvas-toolbar__prompt {
+  height: 28px;
+  width: 220px;
+  padding: 0 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  outline: none;
+}
+
+.canvas-toolbar__prompt::placeholder {
+  color: var(--muted);
+}

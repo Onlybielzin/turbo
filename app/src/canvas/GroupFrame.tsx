@@ -12,9 +12,12 @@
  */
 import { memo, useRef, useState, useCallback } from "react";
 import { NodeProps } from "@xyflow/react";
-import { GroupNodeData } from "./store";
-import { useCanvasStore } from "./store";
+import { invoke } from "@tauri-apps/api/core";
+import { GroupNodeData, AGENT_OPTIONS, useCanvasStore } from "./store";
 import "./GroupFrame.css";
+
+/** Command + args the backend computes for an agent terminal. */
+type ParentSpawn = { command: string; args: string[] };
 
 type GroupFrameProps = NodeProps & { data: GroupNodeData };
 
@@ -22,6 +25,9 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const { updateNodeLabel, addTerminalNode } = useCanvasStore();
 
   const [editing, setEditing] = useState(false);
+  // "Agentes" panel: model + optional custom prompt for the next agent to add.
+  const [memberModel, setMemberModel] = useState(data.backend ?? "fable");
+  const [memberPrompt, setMemberPrompt] = useState("");
   const labelRef = useRef<HTMLSpanElement>(null);
 
   const handleDoubleClick = useCallback(() => {
@@ -63,31 +69,40 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   );
 
   const handleAddAgent = useCallback(
-    (e: React.MouseEvent) => {
+    async (e: React.MouseEvent) => {
       e.stopPropagation();
       const cwd = data.cwd;
-      // Spawn another agent on the group's backend, reusing the orchestrator's
-      // command/args (same MCP wiring). Falls back to a plain shell if the group
-      // has no agent recorded (e.g. a create_group that errored).
-      if (data.agentCommand) {
+      try {
+        // Wire MCP for THIS agent's backend (writes .mcp.json for Claude or
+        // returns the inline URL for Codex) and get its launch command+args.
+        const spawn = await invoke<ParentSpawn>("create_group", {
+          groupId: id,
+          cwd,
+          backend: memberModel,
+        });
+        // A custom prompt is passed as the interactive CLI's positional [PROMPT].
+        const args = memberPrompt.trim()
+          ? [...spawn.args, memberPrompt.trim()]
+          : spawn.args;
         addTerminalNode(
           id,
           null,
           cwd,
-          data.agentCommand,
+          spawn.command,
           [
             ["TURBO_GROUP_ID", id],
             ["TURBO_MCP_DEPTH", "0"],
-            ["TURBO_AGENT", data.backend ?? ""],
+            ["TURBO_AGENT", memberModel],
           ],
-          data.agentArgs,
+          args,
         );
-      } else {
+        setMemberPrompt("");
+      } catch (err) {
+        console.error("[Turbo] add agent failed:", err);
         addTerminalNode(id, null, cwd);
       }
-      // The actual PTY spawn happens inside TerminalNode/usePty on mount
     },
-    [id, data.cwd, data.agentCommand, data.agentArgs, data.backend, addTerminalNode]
+    [id, data.cwd, memberModel, memberPrompt, addTerminalNode]
   );
 
   const cwdDisplay = data.cwd
@@ -111,18 +126,38 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         <span className="group-frame__cwd" title={data.cwd}>
           {cwdDisplay}
         </span>
-        <button
-          type="button"
-          className="group-frame__add-terminal"
-          onClick={handleAddAgent}
-          title={
-            data.backend
-              ? `Adicionar agente (${data.backend}) neste grupo`
-              : "Adicionar terminal neste grupo"
-          }
-        >
-          + Agente
-        </button>
+        <div className="group-frame__agents" onDoubleClick={(e) => e.stopPropagation()}>
+          <span className="group-frame__agents-title">Agentes</span>
+          <select
+            className="group-frame__agent-model"
+            value={memberModel}
+            onChange={(e) => setMemberModel(e.target.value)}
+            aria-label="Modelo do agente"
+            title="Modelo/CLI do agente"
+          >
+            {AGENT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="group-frame__agent-prompt"
+            type="text"
+            value={memberPrompt}
+            onChange={(e) => setMemberPrompt(e.target.value)}
+            placeholder="Prompt (opcional)"
+            title="Prompt inicial / papel do agente"
+          />
+          <button
+            type="button"
+            className="group-frame__add-terminal"
+            onClick={handleAddAgent}
+            title="Adicionar agente neste projeto"
+          >
+            + Agente
+          </button>
+        </div>
       </div>
       <div className="group-frame__body" />
     </div>

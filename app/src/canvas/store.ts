@@ -54,6 +54,16 @@ export interface GroupNodeData extends Record<string, unknown> {
 
 export type AppNode = Node<TerminalNodeData | GroupNodeData>;
 
+/** Agent backends selectable per agent. `value` is the token sent to Rust
+ *  (create_group / spawn_agent): "codex", or a Claude model alias. */
+export const AGENT_OPTIONS: { value: string; label: string }[] = [
+  { value: "fable", label: "Fable 5" },
+  { value: "opus", label: "Opus" },
+  { value: "sonnet", label: "Sonnet" },
+  { value: "haiku", label: "Haiku" },
+  { value: "codex", label: "Codex" },
+];
+
 interface CanvasState {
   nodes: AppNode[];
   edges: Edge[];

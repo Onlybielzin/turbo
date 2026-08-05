@@ -18,24 +18,16 @@
 import { useCallback, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
-import { useCanvasStore } from "./store";
+import { useCanvasStore, AGENT_OPTIONS } from "./store";
 import "./Toolbar.css";
 
 /** Command + args the backend computes for a group's parent terminal. */
 type ParentSpawn = { command: string; args: string[] };
 
-/** Agent backends selectable per group. `value` is the token sent to Rust. */
-const AGENT_OPTIONS: { value: string; label: string }[] = [
-  { value: "fable", label: "Fable · orquestrador" },
-  { value: "opus", label: "Opus" },
-  { value: "sonnet", label: "Sonnet" },
-  { value: "haiku", label: "Haiku" },
-  { value: "codex", label: "Codex" },
-];
-
 export function Toolbar() {
   const { addGroup, addTerminalNode, setGroupAgent } = useCanvasStore();
   const [backend, setBackend] = useState("fable");
+  const [prompt, setPrompt] = useState("");
 
   const handleNewGroup = useCallback(async () => {
     // Open native directory picker
@@ -60,10 +52,14 @@ export function Toolbar() {
         backend,
       });
 
-      // Remember the group's agent so "+ Agente" inside the group reuses it.
+      // Remember the group's default agent so "+ Agente" inside the group
+      // pre-selects it (members store the base args, without this prompt).
       setGroupAgent(groupId, backend, spawn.command, spawn.args);
 
-      // 3. Add the parent TerminalNode with the computed command/args + group env.
+      // A custom prompt is passed as the interactive CLI's positional [PROMPT].
+      const args = prompt.trim() ? [...spawn.args, prompt.trim()] : spawn.args;
+
+      // 3. Add the orchestrator TerminalNode with the computed command/args + env.
       addTerminalNode(
         groupId,
         null,
@@ -74,24 +70,24 @@ export function Toolbar() {
           ["TURBO_MCP_DEPTH", "0"],
           ["TURBO_AGENT", backend],
         ],
-        spawn.args,
+        args,
       );
     } catch (err) {
       console.error("[Turbo] create_group failed:", err);
       // Fallback: open a shell so the user still has a terminal.
       addTerminalNode(groupId, null, cwd, undefined);
     }
-  }, [addGroup, addTerminalNode, setGroupAgent, backend]);
+  }, [addGroup, addTerminalNode, setGroupAgent, backend, prompt]);
 
   return (
     <div className="canvas-toolbar">
       <label className="canvas-toolbar__agent">
-        <span className="canvas-toolbar__agent-label">Agente</span>
+        <span className="canvas-toolbar__agent-label">Orquestrador</span>
         <select
           className="canvas-toolbar__select"
           value={backend}
           onChange={(e) => setBackend(e.target.value)}
-          aria-label="Backend do agente orquestrador"
+          aria-label="Modelo do agente orquestrador"
         >
           {AGENT_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>
@@ -100,6 +96,14 @@ export function Toolbar() {
           ))}
         </select>
       </label>
+      <input
+        className="canvas-toolbar__prompt"
+        type="text"
+        value={prompt}
+        onChange={(e) => setPrompt(e.target.value)}
+        placeholder="Prompt do orquestrador (opcional)"
+        title="Prompt inicial / papel do orquestrador"
+      />
       <button
         type="button"
         className="canvas-toolbar__btn"

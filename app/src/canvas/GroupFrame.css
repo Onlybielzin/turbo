@@ -80,6 +80,53 @@
   background: var(--border);
 }
 
+/* Agents panel — build the project's team: pick model + prompt, add agent */
+.group-frame__agents {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.group-frame__agents-title {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.group-frame__agent-model {
+  height: 22px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+
+.group-frame__agent-model option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.group-frame__agent-prompt {
+  height: 22px;
+  width: 160px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0 6px;
+  font-size: 12px;
+  outline: none;
+}
+
+.group-frame__agent-prompt::placeholder {
+  color: var(--muted);
+}
+
 /* Body: transparent so --group-bg of the root shows through */
 .group-frame__body {
   flex: 1;
