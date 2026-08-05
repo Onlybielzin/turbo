@@ -4,8 +4,8 @@
 // the same instance. The MCP server starts as a tokio task before any group is
 // created; `.mcp.json` is written ONLY after the health-check (D-02 contract).
 
-mod mcp;
 mod groups;
+mod mcp;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -182,7 +182,12 @@ fn pty_write(manager: State<PtyManagerState>, id: u32, data: String) -> Result<(
 
 /// Resize a pty (sends SIGWINCH to the child).
 #[tauri::command]
-fn pty_resize(manager: State<PtyManagerState>, id: u32, cols: u16, rows: u16) -> Result<(), String> {
+fn pty_resize(
+    manager: State<PtyManagerState>,
+    id: u32,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
     let map = manager.0.sessions.lock().unwrap();
     let session = map.get(&id).ok_or("pty not found")?;
     session
@@ -247,6 +252,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(PtyManagerState(pty_manager))
         .manage(GroupRegistry::default())
         // McpState is inserted after the server starts (see setup hook below).
@@ -274,7 +281,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            pty_spawn, pty_write, pty_resize, pty_kill, create_group
+            pty_spawn,
+            pty_write,
+            pty_resize,
+            pty_kill,
+            create_group
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

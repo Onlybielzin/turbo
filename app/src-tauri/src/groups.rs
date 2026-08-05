@@ -32,12 +32,7 @@ impl GroupRegistry {
     /// Precondition: the MCP server is already listening on `mcp_port`.
     /// This is guaranteed by the caller (create_group command) which only runs
     /// after `McpState` is populated (D-02).
-    pub fn register(
-        &self,
-        group_id: &str,
-        cwd: &Path,
-        mcp_port: u16,
-    ) -> Result<()> {
+    pub fn register(&self, group_id: &str, cwd: &Path, mcp_port: u16) -> Result<()> {
         // Write `.mcp.json` — the parent claude reads this on startup to find the tool.
         // `group_id` is included in the URL so the MCP handler knows which frame to use.
         let mcp_json_path = cwd.join(".mcp.json");
@@ -49,8 +44,8 @@ impl GroupRegistry {
                 }
             }
         });
-        let content = serde_json::to_string_pretty(&config)
-            .context("failed to serialise .mcp.json")?;
+        let content =
+            serde_json::to_string_pretty(&config).context("failed to serialise .mcp.json")?;
         std::fs::write(&mcp_json_path, content)
             .with_context(|| format!("failed to write {}", mcp_json_path.display()))?;
 
@@ -64,7 +59,9 @@ impl GroupRegistry {
         let mut map = self.entries.lock().unwrap();
         map.insert(
             group_id.to_string(),
-            GroupEntry { cwd: cwd.to_path_buf() },
+            GroupEntry {
+                cwd: cwd.to_path_buf(),
+            },
         );
 
         Ok(())
@@ -73,7 +70,11 @@ impl GroupRegistry {
     /// Look up the cwd for a group.
     #[allow(dead_code)] // used by future MCP connection-to-group routing
     pub fn get_cwd(&self, group_id: &str) -> Option<PathBuf> {
-        self.entries.lock().unwrap().get(group_id).map(|e| e.cwd.clone())
+        self.entries
+            .lock()
+            .unwrap()
+            .get(group_id)
+            .map(|e| e.cwd.clone())
     }
 
     /// Remove a group entry (e.g. when the group is closed).

@@ -1,8 +1,14 @@
+import { useEffect } from "react";
 import { Canvas } from "./canvas/Canvas";
 import { ErrorBoundary } from "./canvas/ErrorBoundary";
+import { checkForUpdates } from "./updater";
 import "./App.css";
 
 function App() {
+  useEffect(() => {
+    void checkForUpdates();
+  }, []);
+
   return (
     <div className="app-shell">
       <header className="app-header">

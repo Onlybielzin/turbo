@@ -169,8 +169,9 @@ impl SpawnServer {
 
         // Run PTY in spawn_blocking — no thread leak on task cancellation;
         // the OS thread finishes naturally and the JoinHandle is owned by tokio.
-        let pty_task =
-            tokio::task::spawn_blocking(move || run_in_pty_blocking(command, args, None, extra_env));
+        let pty_task = tokio::task::spawn_blocking(move || {
+            run_in_pty_blocking(command, args, None, extra_env)
+        });
         tokio::pin!(pty_task);
 
         // Heartbeat every 10 s to keep the parent claude's MCP idle timer alive (ORCH-05).
@@ -244,7 +245,13 @@ pub async fn start(
     let app_clone = app.clone();
 
     let service = StreamableHttpService::new(
-        move || Ok(SpawnServer::new(depth_limit, Arc::clone(&pm), app_clone.clone())),
+        move || {
+            Ok(SpawnServer::new(
+                depth_limit,
+                Arc::clone(&pm),
+                app_clone.clone(),
+            ))
+        },
         Arc::new(LocalSessionManager::default()),
         StreamableHttpServerConfig::default(),
     );
