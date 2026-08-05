@@ -11,11 +11,11 @@
  */
 
 /** Dimensions of a spawned child TerminalNode (px, relative to group interior). */
-export const CHILD_NODE_WIDTH = 480;
-export const CHILD_NODE_HEIGHT = 280;
+export const CHILD_NODE_WIDTH = 620;
+export const CHILD_NODE_HEIGHT = 420;
 
 /** Radius from parent centre to child centre (px). */
-const FAN_RADIUS = 380;
+const FAN_RADIUS = 560;
 
 /** Arc spread for the fan (radians). 0 = rightward, π = full half-circle. */
 const FAN_SPREAD = Math.PI * 0.8; // ~144° arc — readable fan

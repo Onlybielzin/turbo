@@ -10,6 +10,7 @@
  * - Inner padding from group frame to child nodes: 32px (--xl)
  */
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import {
   Node,
   Edge,
@@ -72,15 +73,198 @@ interface CanvasState {
   updateNodeStatus: (nodeId: string, status: NodeStatus) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   setPtyId: (nodeId: string, ptyId: number) => void;
+  /** Re-anchor all groups to fully contain their children (call on resize-end). */
+  normalizeGroups: () => void;
+  /** Push a group out of any other group it overlaps (call on group drag-stop). */
+  resolveGroupOverlap: (groupId: string) => void;
+  /** Reposition all groups into a neat aligned grid (Auto-grid / Ctrl+G). */
+  autoGridGroups: () => void;
 }
 
-export const useCanvasStore = create<CanvasState>((set, get) => ({
+// ── Group auto-sizing ─────────────────────────────────────────────────────────
+const GROUP_PAD = 32; // breathing room around child nodes
+const GROUP_TOP = 60; // label bar (28px) + padding — children start below it
+const MIN_GROUP_W = 640;
+const MIN_GROUP_H = 440;
+
+/** Best-effort current rendered size of a node (measured > explicit > style > default). */
+function nodeSize(n: AppNode): { w: number; h: number } {
+  const measured = (n as { measured?: { width?: number; height?: number } }).measured;
+  const wTop = (n as { width?: number }).width;
+  const hTop = (n as { height?: number }).height;
+  const styleW = typeof n.style?.width === "number" ? n.style.width : undefined;
+  const styleH = typeof n.style?.height === "number" ? n.style.height : undefined;
+  return {
+    w: measured?.width ?? wTop ?? styleW ?? 780,
+    h: measured?.height ?? hTop ?? styleH ?? 540,
+  };
+}
+
+/**
+ * Grow every GroupFrame so it contains all of its child nodes (bounding box +
+ * padding). Children are parent-relative, so a child at (x,y) with size (w,h)
+ * needs the group to be at least x+w wide and y+h tall. Runs on any node change
+ * (add / move / resize) so the group tracks the terminals inside it.
+ */
+/** Grow-only fit (right/bottom). Safe to run LIVE during a drag/resize — it never
+ *  moves the group origin, so it can't feed back into the NodeResizer. */
+function fitGroups(nodes: AppNode[]): AppNode[] {
+  return nodes.map((n) => {
+    if (n.type !== "group") return n;
+    const children = nodes.filter((c) => c.parentId === n.id);
+    if (children.length === 0) return n;
+    let maxRight = 0;
+    let maxBottom = 0;
+    for (const c of children) {
+      const { w, h } = nodeSize(c);
+      maxRight = Math.max(maxRight, c.position.x + w);
+      maxBottom = Math.max(maxBottom, c.position.y + h);
+    }
+    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + GROUP_PAD));
+    const height = Math.max(MIN_GROUP_H, Math.round(maxBottom + GROUP_PAD));
+    const cur = n.style ?? {};
+    if (cur.width === width && cur.height === height) return n;
+    return { ...n, style: { ...cur, width, height } };
+  });
+}
+
+/** Full re-anchor (all 4 sides): pulls left/top-overflowing children back inside
+ *  and moves the group origin to match. Run ONCE on resize-end — running it live
+ *  fights the NodeResizer and makes the group fly away. */
+function reanchorGroups(nodes: AppNode[]): AppNode[] {
+  const groups = nodes.filter((n) => n.type === "group");
+  if (groups.length === 0) return nodes;
+
+  // Per-group adjustment: shift (dx,dy) to pull left/top-overflowing children back
+  // inside, plus the new width/height that bounds all children with padding.
+  const adj = new Map<
+    string,
+    { dx: number; dy: number; width: number; height: number }
+  >();
+  for (const g of groups) {
+    const children = nodes.filter((c) => c.parentId === g.id);
+    if (children.length === 0) continue;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxRight = -Infinity;
+    let maxBottom = -Infinity;
+    for (const c of children) {
+      const { w, h } = nodeSize(c);
+      minX = Math.min(minX, c.position.x);
+      minY = Math.min(minY, c.position.y);
+      maxRight = Math.max(maxRight, c.position.x + w);
+      maxBottom = Math.max(maxBottom, c.position.y + h);
+    }
+    // Enforce EXACTLY GROUP_PAD/GROUP_TOP margin on the left/top. Positive shifts
+    // expand the frame to cover overflow; negative shifts contract it when the
+    // child moved inward — so shrinking a terminal shrinks the group back too.
+    const dx = Math.round(GROUP_PAD - minX);
+    const dy = Math.round(GROUP_TOP - minY);
+    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + dx + GROUP_PAD));
+    const height = Math.max(MIN_GROUP_H, Math.round(maxBottom + dy + GROUP_PAD));
+    adj.set(g.id, { dx, dy, width, height });
+  }
+
+  if (adj.size === 0) return nodes;
+
+  return nodes.map((n) => {
+    if (n.type === "group") {
+      const a = adj.get(n.id);
+      if (!a) return n;
+      const cur = n.style ?? {};
+      const posChanged = a.dx !== 0 || a.dy !== 0;
+      const sizeChanged = cur.width !== a.width || cur.height !== a.height;
+      if (!posChanged && !sizeChanged) return n;
+      // Move the group origin left/up by (dx,dy) so children shifted right/down
+      // by the same amount stay visually put — the frame simply grows to cover them.
+      return {
+        ...n,
+        position: posChanged
+          ? { x: n.position.x - a.dx, y: n.position.y - a.dy }
+          : n.position,
+        style: { ...cur, width: a.width, height: a.height },
+      };
+    }
+    // Shift children of a re-anchored group to keep them inside the frame.
+    if (n.parentId) {
+      const a = adj.get(n.parentId);
+      if (a && (a.dx !== 0 || a.dy !== 0)) {
+        return { ...n, position: { x: n.position.x + a.dx, y: n.position.y + a.dy } };
+      }
+    }
+    return n;
+  });
+}
+
+/** Bounding rect of a group node (falls back to the default group size). */
+function groupRect(n: AppNode): { x: number; y: number; w: number; h: number } {
+  const w = typeof n.style?.width === "number" ? n.style.width : 1120;
+  const h = typeof n.style?.height === "number" ? n.style.height : 780;
+  return { x: n.position.x, y: n.position.y, w, h };
+}
+
+const GROUP_GAP = 24; // minimum gap kept between two groups
+
+/** Push `groupId` out of any other group it overlaps, along the least-overlap
+ *  axis, until it collides with none (or a safety cap is reached). Groups own
+ *  their children (parent-relative), so moving the group moves its terminals too. */
+function pushGroupOut(nodes: AppNode[], groupId: string): AppNode[] {
+  const groups = nodes.filter((n) => n.type === "group");
+  const moved = groups.find((g) => g.id === groupId);
+  if (!moved) return nodes;
+  let { x, y } = moved.position;
+  const { w, h } = groupRect(moved);
+  for (let iter = 0; iter < 24; iter++) {
+    let collided = false;
+    for (const o of groups) {
+      if (o.id === groupId) continue;
+      const r = groupRect(o);
+      const overlapX = Math.min(x + w, r.x + r.w) - Math.max(x, r.x);
+      const overlapY = Math.min(y + h, r.y + r.h) - Math.max(y, r.y);
+      if (overlapX > 0 && overlapY > 0) {
+        if (overlapX < overlapY) {
+          x += x + w / 2 < r.x + r.w / 2 ? -(overlapX + GROUP_GAP) : overlapX + GROUP_GAP;
+        } else {
+          y += y + h / 2 < r.y + r.h / 2 ? -(overlapY + GROUP_GAP) : overlapY + GROUP_GAP;
+        }
+        collided = true;
+      }
+    }
+    if (!collided) break;
+  }
+  if (x === moved.position.x && y === moved.position.y) return nodes;
+  return nodes.map((n) => (n.id === groupId ? { ...n, position: { x, y } } : n));
+}
+
+/** Separate ALL overlapping groups (e.g. after a terminal grew its group over a
+ *  neighbour). Repeatedly pushes each group out of the others until stable. */
+function separateGroups(nodes: AppNode[]): AppNode[] {
+  const ids = nodes.filter((n) => n.type === "group").map((g) => g.id);
+  if (ids.length < 2) return nodes;
+  let result = nodes;
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (const id of ids) {
+      const before = result;
+      result = pushGroupOut(result, id);
+      if (result !== before) moved = true;
+    }
+    if (!moved) break;
+  }
+  return result;
+}
+
+export const useCanvasStore = create<CanvasState>()(
+  persist(
+    (set, get) => ({
   nodes: [],
   edges: [],
   groupCounter: 0,
 
   onNodesChange: (changes) => {
-    set({ nodes: applyNodeChanges(changes, get().nodes) as AppNode[] });
+    // Apply the change, then re-fit every group to its (possibly moved/resized) children.
+    const next = applyNodeChanges(changes, get().nodes) as AppNode[];
+    set({ nodes: fitGroups(next) });
   },
 
   onEdgesChange: (changes) => {
@@ -107,13 +291,13 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       position: { x, y },
       data: { label, cwd } as GroupNodeData,
       style: {
-        width: 800,
-        height: 600,
+        width: 1120,
+        height: 780,
       },
     };
 
     set({
-      nodes: [...nodes, groupNode],
+      nodes: pushGroupOut([...nodes, groupNode], groupId),
       groupCounter: n,
     });
 
@@ -130,10 +314,10 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     // Place inside the group with 32px inner padding (--xl)
     const innerPad = 32;
     const labelBarH = 28;
-    const col = existingChildren.length % 2;
-    const row = Math.floor(existingChildren.length / 2);
-    const terminalX = innerPad + col * (480 + innerPad);
-    const terminalY = labelBarH + innerPad + row * (280 + innerPad);
+    // Single-column vertical stack so the larger 780×540 terminals never overlap.
+    const row = existingChildren.length;
+    const terminalX = innerPad;
+    const terminalY = labelBarH + innerPad + row * (540 + innerPad);
 
     const terminalLabel =
       parentNode
@@ -144,7 +328,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       id: nodeId,
       type: "terminal",
       parentId: groupId,
-      extent: "parent",
       position: { x: terminalX, y: terminalY },
       data: {
         label: terminalLabel,
@@ -155,12 +338,12 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
         env,
       } as TerminalNodeData,
       style: {
-        width: 480,
-        height: 280,
+        width: 780,
+        height: 540,
       },
     };
 
-    set({ nodes: [...nodes, terminalNode] });
+    set({ nodes: fitGroups([...nodes, terminalNode]) });
     return nodeId;
   },
 
@@ -187,7 +370,6 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       id: nodeId,
       type: "terminal",
       parentId: groupId,
-      extent: "parent",
       position: pos,
       data: {
         label,
@@ -221,7 +403,7 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
     };
 
     set({
-      nodes: [...nodes, childNode],
+      nodes: fitGroups([...nodes, childNode]),
       edges: [...edges, edge],
     });
 
@@ -274,4 +456,79 @@ export const useCanvasStore = create<CanvasState>((set, get) => ({
       ),
     });
   },
-}));
+
+  normalizeGroups: () => {
+    set({ nodes: separateGroups(reanchorGroups(get().nodes)) });
+  },
+
+  resolveGroupOverlap: (groupId: string) => {
+    set({ nodes: pushGroupOut(get().nodes, groupId) });
+  },
+
+  autoGridGroups: () => {
+    const nodes = get().nodes;
+    const groups = nodes.filter((n) => n.type === "group");
+    if (groups.length === 0) return;
+    const gap = 48;
+    const originX = 40;
+    const originY = 40;
+    // Uniform cells sized to the largest group → a clean, aligned grid.
+    const cellW = Math.max(...groups.map((g) => groupRect(g).w));
+    const cellH = Math.max(...groups.map((g) => groupRect(g).h));
+    const cols = Math.max(1, Math.ceil(Math.sqrt(groups.length)));
+    const posMap = new Map<string, { x: number; y: number }>();
+    groups.forEach((g, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      posMap.set(g.id, {
+        x: originX + col * (cellW + gap),
+        y: originY + row * (cellH + gap),
+      });
+    });
+    set({
+      nodes: nodes.map((n) =>
+        posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n
+      ),
+    });
+  },
+    }),
+    {
+      // Session persistence: groups + terminals survive app restarts (localStorage,
+      // kept by WebKitGTK across sessions). PTYs die on close, so on restore each
+      // terminal re-spawns its command; ephemeral spawn_agent children are dropped.
+      name: "turbo-canvas",
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ nodes: s.nodes, groupCounter: s.groupCounter }),
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as {
+          nodes?: AppNode[];
+          groupCounter?: number;
+        };
+        const restored = (p.nodes ?? [])
+          // Drop ephemeral children created by spawn_agent (one-shot MCP results).
+          .filter((n) => !n.id.startsWith("terminal-child-"))
+          // Reset runtime-only fields — the PTY is gone; usePty re-spawns on mount.
+          .map((n) =>
+            n.type === "terminal"
+              ? ({
+                  ...n,
+                  // Drop any legacy parent-extent so restored terminals resize freely.
+                  extent: undefined,
+                  data: {
+                    ...(n.data as TerminalNodeData),
+                    ptyId: null,
+                    status: "running" as NodeStatus,
+                  },
+                } as AppNode)
+              : n
+          );
+        return {
+          ...current,
+          nodes: restored,
+          edges: [], // parent→child edges reference dropped children
+          groupCounter: p.groupCounter ?? 0,
+        };
+      },
+    }
+  )
+);
