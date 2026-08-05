@@ -2,19 +2,19 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: 1
-current_phase_name: Foundation — Tauri + PTY
+current_phase: 2
+current_phase_name: MCP Spike (binário isolado
 status: verifying
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-05T12:07:47.326Z"
+last_updated: "2026-08-05T12:32:41.781Z"
 last_activity: 2026-08-05
-last_activity_desc: Phase 1 execution started
+last_activity_desc: Phase 2 execution started
 progress:
   total_phases: 4
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 1
-  percent: 25
+  completed_plans: 2
+  percent: 50
 ---
 
 # Project State
@@ -24,14 +24,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** Ver os subagentes do Claude trabalhando ao vivo — cada um no seu terminal visível no canvas — enquanto um Claude pai os orquestra e recebe os resultados de volta.
-**Current focus:** Phase 1 — Foundation — Tauri + PTY
+**Current focus:** Phase 2 — MCP Spike (binário isolado)
 
 ## Current Position
 
-Phase: 1 (Foundation — Tauri + PTY) — EXECUTING
+Phase: 2 (MCP Spike (binário isolado)) — EXECUTING
 Plan: 1 of 1
 Status: Phase complete — ready for verification
-Last activity: 2026-08-05 — Phase 1 Plan 1 executed (Tasks 1+2 complete; Task 3 human-verify checkpoint pending)
+Last activity: 2026-08-05 — Phase 2 execution started
 
 Progress: [███░░░░░░░] 25%
 
@@ -85,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-05T12:07:22.740Z
+Last session: 2026-08-05T12:32:41.774Z
 Stopped at: Phase 1 Plan 1 — Task 3 checkpoint:human-verify (5 ROADMAP criteria)
 Resume file: .planning/phases/01-foundation-tauri-pty/01-01-SUMMARY.md

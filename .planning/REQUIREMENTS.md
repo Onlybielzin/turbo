@@ -32,12 +32,12 @@ Requisitos da release inicial. Cada um mapeia para fases do roadmap.
 
 ### Orchestration (MCP + spawn_agent)
 
-- [ ] **ORCH-01**: O app hospeda um servidor MCP embutido via Streamable HTTP em 127.0.0.1 (stdio descartado; SSE deprecado)
+- [x] **ORCH-01**: O app hospeda um servidor MCP embutido via Streamable HTTP em 127.0.0.1 (stdio descartado; SSE deprecado)
 - [ ] **ORCH-02**: O Claude pai é lançado configurado (`.mcp.json`/`--mcp-config`) enxergando a tool `spawn_agent`, e a config só é escrita após o servidor estar ouvindo
 - [ ] **ORCH-03**: Chamar `spawn_agent(tarefa, label)` cria um novo nó-terminal filho no canvas rodando `claude -p` naquela tarefa
-- [ ] **ORCH-04**: `spawn_agent` bloqueia até o filho terminar e retorna o output final do filho para o pai
-- [ ] **ORCH-05**: `spawn_agent` emite progress notifications periódicas (~10s) para não estourar o idle timeout de 60s do cliente MCP do pai
-- [ ] **ORCH-06**: O servidor impõe um guard de profundidade de recursão (limitar netos/bisnetos) para evitar explosão de custo
+- [x] **ORCH-04**: `spawn_agent` bloqueia até o filho terminar e retorna o output final do filho para o pai
+- [x] **ORCH-05**: `spawn_agent` emite progress notifications periódicas (~10s) para não estourar o idle timeout de 60s do cliente MCP do pai
+- [x] **ORCH-06**: O servidor impõe um guard de profundidade de recursão (limitar netos/bisnetos) para evitar explosão de custo
 - [ ] **ORCH-07**: Chamadas `spawn_agent` concorrentes de um mesmo pai são suportadas (uma task async por filho)
 
 ### Groups / Multi-Project
@@ -86,10 +86,10 @@ Explicitamente excluído. Documentado para evitar scope creep.
 | FND-04 | Phase 1 | Complete |
 | FND-05 | Phase 1 | Complete |
 | FND-06 | Phase 1 | Complete |
-| ORCH-01 | Phase 2 | Pending |
-| ORCH-04 | Phase 2 | Pending |
-| ORCH-05 | Phase 2 | Pending |
-| ORCH-06 | Phase 2 | Pending |
+| ORCH-01 | Phase 2 | Complete |
+| ORCH-04 | Phase 2 | Complete |
+| ORCH-05 | Phase 2 | Complete |
+| ORCH-06 | Phase 2 | Complete |
 | TERM-01 | Phase 3 | Pending |
 | TERM-02 | Phase 3 | Pending |
 | TERM-03 | Phase 3 | Pending |
