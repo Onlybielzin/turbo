@@ -43,6 +43,13 @@ export interface TerminalNodeData extends Record<string, unknown> {
 export interface GroupNodeData extends Record<string, unknown> {
   label: string;
   cwd: string;
+  /** The group's agent backend token (fable|opus|sonnet|haiku|codex). Set by
+   *  the Toolbar after create_group; drives "+ Agente" inside the group. */
+  backend?: string;
+  /** Command + args used to launch the group's agent (orchestrator). Reused
+   *  verbatim when adding more agents to the group so MCP wiring matches. */
+  agentCommand?: string;
+  agentArgs?: string[];
 }
 
 export type AppNode = Node<TerminalNodeData | GroupNodeData>;
@@ -70,6 +77,9 @@ interface CanvasState {
     childPtyId: string | null;
   }) => string;
   removeNode: (nodeId: string) => void;
+  /** Stash the group's agent backend + launch command so "+ Agente" can spawn
+   *  more terminals on the same backend with matching MCP wiring. */
+  setGroupAgent: (groupId: string, backend: string, command: string, args: string[]) => void;
   updateNodeStatus: (nodeId: string, status: NodeStatus) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   setPtyId: (nodeId: string, ptyId: number) => void;
@@ -346,6 +356,16 @@ export const useCanvasStore = create<CanvasState>()(
 
     set({ nodes: fitGroups([...nodes, terminalNode]) });
     return nodeId;
+  },
+
+  setGroupAgent: (groupId: string, backend: string, command: string, args: string[]): void => {
+    set((state) => ({
+      nodes: state.nodes.map((n) =>
+        n.id === groupId
+          ? { ...n, data: { ...n.data, backend, agentCommand: command, agentArgs: args } }
+          : n
+      ),
+    }));
   },
 
   addChildNode: ({ groupId, parentNodeId, label, childPtyId: _childPtyId }) => {

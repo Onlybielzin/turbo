@@ -62,15 +62,32 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
     [commitLabel, data.label]
   );
 
-  const handleAddTerminal = useCallback(
+  const handleAddAgent = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      // Determine command: try claude first, fall back to shell
       const cwd = data.cwd;
-      addTerminalNode(id, null, cwd);
+      // Spawn another agent on the group's backend, reusing the orchestrator's
+      // command/args (same MCP wiring). Falls back to a plain shell if the group
+      // has no agent recorded (e.g. a create_group that errored).
+      if (data.agentCommand) {
+        addTerminalNode(
+          id,
+          null,
+          cwd,
+          data.agentCommand,
+          [
+            ["TURBO_GROUP_ID", id],
+            ["TURBO_MCP_DEPTH", "0"],
+            ["TURBO_AGENT", data.backend ?? ""],
+          ],
+          data.agentArgs,
+        );
+      } else {
+        addTerminalNode(id, null, cwd);
+      }
       // The actual PTY spawn happens inside TerminalNode/usePty on mount
     },
-    [id, data.cwd, addTerminalNode]
+    [id, data.cwd, data.agentCommand, data.agentArgs, data.backend, addTerminalNode]
   );
 
   const cwdDisplay = data.cwd
@@ -97,10 +114,14 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         <button
           type="button"
           className="group-frame__add-terminal"
-          onClick={handleAddTerminal}
-          title="Adicionar terminal neste grupo"
+          onClick={handleAddAgent}
+          title={
+            data.backend
+              ? `Adicionar agente (${data.backend}) neste grupo`
+              : "Adicionar terminal neste grupo"
+          }
         >
-          + Novo terminal
+          + Agente
         </button>
       </div>
       <div className="group-frame__body" />

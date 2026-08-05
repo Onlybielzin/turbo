@@ -62,11 +62,12 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 2px 8px;
   border-radius: 3px;
   white-space: nowrap;
-  opacity: 0;
-  transition: opacity 100ms, color 100ms;
+  opacity: 1;
+  border: 1px solid var(--border);
+  transition: opacity 100ms, color 100ms, background 100ms;
   flex-shrink: 0;
 }
 

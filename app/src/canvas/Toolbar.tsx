@@ -34,7 +34,7 @@ const AGENT_OPTIONS: { value: string; label: string }[] = [
 ];
 
 export function Toolbar() {
-  const { addGroup, addTerminalNode } = useCanvasStore();
+  const { addGroup, addTerminalNode, setGroupAgent } = useCanvasStore();
   const [backend, setBackend] = useState("fable");
 
   const handleNewGroup = useCallback(async () => {
@@ -60,6 +60,9 @@ export function Toolbar() {
         backend,
       });
 
+      // Remember the group's agent so "+ Agente" inside the group reuses it.
+      setGroupAgent(groupId, backend, spawn.command, spawn.args);
+
       // 3. Add the parent TerminalNode with the computed command/args + group env.
       addTerminalNode(
         groupId,
@@ -78,7 +81,7 @@ export function Toolbar() {
       // Fallback: open a shell so the user still has a terminal.
       addTerminalNode(groupId, null, cwd, undefined);
     }
-  }, [addGroup, addTerminalNode, backend]);
+  }, [addGroup, addTerminalNode, setGroupAgent, backend]);
 
   return (
     <div className="canvas-toolbar">
