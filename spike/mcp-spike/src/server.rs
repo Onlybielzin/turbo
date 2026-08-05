@@ -80,9 +80,33 @@ impl SpawnServer {
         }
 
         let (command, args) = if self.fake {
+            // Resolve fake-agent.sh relative to the binary so it works regardless of cwd.
+            // Falls back to relative path if executable path is unavailable.
+            let fake_script = std::env::current_exe()
+                .ok()
+                .and_then(|exe| exe.parent().map(|p| p.to_path_buf()))
+                .map(|dir| {
+                    // The binary sits at target/debug/ inside the crate root, so look two
+                    // levels up, then at the crate root. Also try cwd as final fallback.
+                    let in_target = dir.join("../../fake-agent.sh");
+                    let in_cwd = std::env::current_dir()
+                        .ok()
+                        .map(|d| d.join("fake-agent.sh"))
+                        .filter(|p| p.exists());
+                    if in_target.exists() {
+                        in_target.to_string_lossy().into_owned()
+                    } else if let Some(cwd_script) = in_cwd {
+                        cwd_script.to_string_lossy().into_owned()
+                    } else {
+                        "fake-agent.sh".to_string()
+                    }
+                })
+                .unwrap_or_else(|| "fake-agent.sh".to_string());
+
+            tracing::debug!(fake_script = %fake_script, "resolved fake-agent.sh path");
             (
                 "bash".to_string(),
-                vec!["fake-agent.sh".to_string(), p.task.clone()],
+                vec![fake_script, p.task.clone()],
             )
         } else {
             (
