@@ -60,7 +60,7 @@ Inherited from Phase 1. No new tokens needed. Specific canvas usages noted below
 | `--node-min-w` | 480px | Default TerminalNode width on spawn (80 cols × ~6px per char) |
 | `--node-min-h` | 240px | Default TerminalNode height on spawn (24 rows × 10px per row) |
 | `--group-label-h` | 28px | GroupFrame label bar height |
-| `--canvas-dot-size` | 1.5px | Background dot radius |
+| `--canvas-dot-size` | 2px | Background dot radius |
 | `--canvas-dot-gap` | 24px | Background dot grid gap |
 
 ---
@@ -76,15 +76,14 @@ Canvas adds one new role: the node label in the TerminalNode header.
 | UI label / subtitle | 12px | 400 (regular) | 1.4 | sans-serif stack |
 | UI body / default | 14px | 400 (regular) | 1.5 | sans-serif stack |
 | Brand name | 14px | 700 (bold) | 1.0 | sans-serif stack |
-| **Node label** | **12px** | **600 (semibold)** | **1.0** | sans-serif stack |
+| **Node label** | **12px** | **700 (bold)** | **1.0** | sans-serif stack |
 | **GroupFrame cwd** | **11px** | **400 (regular)** | **1.0** | monospace stack |
 
-**New weight:** 600 (semibold) added for node labels — the only addition to Phase 1's
-two weights (400, 700). Weights used in Phase 3: 400, 600, 700.
+**No new weight:** node labels reuse Phase 1's 700 (bold). Weights used in Phase 3: 400, 700 — unchanged from Phase 1's two-weight ceiling.
 
-**Node label** (12px/600): displayed in the TerminalNode header bar — must be legible
-at small canvas zoom levels. Semibold provides enough contrast against the gradient
-background without becoming heavy.
+**Node label** (12px/700): displayed in the TerminalNode header bar — must be legible
+at small canvas zoom levels. Bold provides strong contrast against the gradient
+header background.
 
 **GroupFrame cwd** (11px/400, monospace): path string below the group label —
 monospace chosen because it is a filesystem path. Truncated with `text-overflow: ellipsis`
@@ -160,7 +159,7 @@ A custom `@xyflow/react` node rendered for every live PTY.
 - Background: `linear-gradient(180deg, var(--brand-a), var(--brand-b))`
 - Padding: `0 8px` (8px inline on both sides)
 - Layout: `display: flex; align-items: center; gap: 4px`
-- Left side: status dot (8×8px circle) + node label (12px/600)
+- Left side: status dot (8×8px circle) + node label (12px/700)
 - Right side: kill button (×), 24×24px tap target, icon is `×` at 14px/400
 - `user-select: none`
 
@@ -267,7 +266,7 @@ at default size (480×280px) plus the 32px inner padding on all sides.
 
 - Pattern: dots (`BackgroundVariant.Dots` from `@xyflow/react`)
 - Dot colour: `var(--canvas-dot)` (`#2a2622`)
-- Dot size: 1.5px
+- Dot size: 2px
 - Dot gap: 24px
 - Canvas background colour: `var(--bg)` (`#0f0e0d`)
 
@@ -433,7 +432,7 @@ These tokens must be added to the `:root` block in `app/src/App.css`:
 --node-min-w: 480px;
 --node-min-h: 240px;
 --group-label-h: 28px;
---canvas-dot-size: 1.5px;
+--canvas-dot-size: 2px;
 --canvas-dot-gap: 24px;
 ```
 
