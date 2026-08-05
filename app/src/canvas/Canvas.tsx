@@ -12,7 +12,7 @@
  * - Toolbar: top-left absolute overlay with "+ Novo grupo" button
  * - Empty state: centred message when no nodes exist
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -24,12 +24,14 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
-import { useCanvasStore } from "./store";
+import { useCanvasStore, GroupNodeData } from "./store";
 import { TerminalNode } from "./TerminalNode";
 import { GroupFrame } from "./GroupFrame";
 import { Toolbar } from "./Toolbar";
+import { GroupTabs } from "./GroupTabs";
 
 const nodeTypes: NodeTypes = {
   terminal: TerminalNode,
@@ -58,8 +60,16 @@ interface NodeCreatedPayload {
 }
 
 function CanvasInner() {
-  const { nodes, edges, onNodesChange, onEdgesChange, onConnect, addChildNode } =
-    useCanvasStore();
+  const {
+    nodes,
+    edges,
+    onNodesChange,
+    onEdgesChange,
+    onConnect,
+    addChildNode,
+    normalizeGroups,
+    resolveGroupOverlap,
+  } = useCanvasStore();
 
   // Listen for `node_created` events emitted by the MCP spawn_agent handler.
   // For each event, find the parent TerminalNode by pty_id and add a child node
@@ -90,11 +100,48 @@ function CanvasInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Session restore: groups rehydrated from localStorage carry a `.mcp.json` that
+  // points to LAST session's (now-dead) MCP port. Rewrite it for each restored
+  // group with the current session's port so a restored parent claude can still
+  // see spawn_agent. Runs once on mount; new groups handle this via the Toolbar.
+  useEffect(() => {
+    const groups = useCanvasStore
+      .getState()
+      .nodes.filter((n) => n.type === "group");
+    for (const g of groups) {
+      const cwd = (g.data as GroupNodeData).cwd;
+      if (cwd) void invoke("create_group", { groupId: g.id, cwd }).catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Hold Shift while dragging to snap nodes/groups to the 24px background grid
+  // (aligns their edges with the background dots).
+  const [snapActive, setSnapActive] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.key === "Shift") setSnapActive(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Shift") setSnapActive(false);
+    };
+    const reset = () => setSnapActive(false);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", reset);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", reset);
+    };
+  }, []);
+
   const isEmpty = nodes.length === 0;
 
   return (
     <div className="canvas-area">
       <Toolbar />
+      <GroupTabs />
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -102,6 +149,12 @@ function CanvasInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onNodeDragStop={(_, node) => {
+          if (node.type === "group") resolveGroupOverlap(node.id);
+          else normalizeGroups();
+        }}
+        snapToGrid={snapActive}
+        snapGrid={[24, 24]}
         defaultEdgeOptions={defaultEdgeOptions}
         fitView={false}
         colorMode="dark"

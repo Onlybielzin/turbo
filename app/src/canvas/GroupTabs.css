@@ -1,0 +1,111 @@
+/* GroupTabs — top-centre overlay tab bar for jumping between groups. */
+
+.group-tabs {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 70vw;
+  overflow-x: auto;
+  padding: 4px;
+  background: rgba(22, 21, 20, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  scrollbar-width: none;
+}
+
+.group-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.group-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 10px 5px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.group-tab:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.group-tab--active {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(158, 42, 26, 0.28), rgba(92, 22, 13, 0.28));
+  border-color: rgba(158, 42, 26, 0.6);
+}
+
+/* The number badge — mirrors the Ctrl+N shortcut. */
+.group-tab__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.group-tab--active .group-tab__index {
+  background: var(--brand-a);
+  color: #fff;
+}
+
+.group-tab__label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+/* Auto-grid action button. */
+.group-tab--action {
+  padding: 5px 10px;
+}
+
+.group-tab--action:hover {
+  color: #fff;
+}
+
+/* Small 2x2 grid glyph drawn with CSS (no icon font / emoji). */
+.group-tab__grid-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  background:
+    linear-gradient(currentColor, currentColor) 0 0 / 5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 7px 0 / 5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 0 7px / 5px 5px no-repeat,
+    linear-gradient(currentColor, currentColor) 7px 7px / 5px 5px no-repeat;
+  border-radius: 1px;
+}
+
+/* Divider between the action and the group chips. */
+.group-tabs__sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--border);
+  flex-shrink: 0;
+}
