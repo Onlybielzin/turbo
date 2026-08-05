@@ -9,12 +9,12 @@ Requisitos da release inicial. Cada um mapeia para fases do roadmap.
 
 ### Foundation (App + PTY)
 
-- [ ] **FND-01**: O app abre uma janela funcional no Linux/Wayland (Hyprland) sem tela preta (Wayland/DMABUF fix aplicado em `main()`)
-- [ ] **FND-02**: O backend spawna um processo em pty e lê sua saída sem bloquear o runtime async (leitura em `spawn_blocking`)
-- [ ] **FND-03**: A saída do pty chega ao frontend em streaming via Channel, preservando UTF-8/ANSI em fronteiras de chunk
-- [ ] **FND-04**: O frontend envia entrada de teclado ao pty (round-trip de digitação funciona)
-- [ ] **FND-05**: Redimensionar o terminal ajusta o pty (SIGWINCH) sem loop de resize
-- [ ] **FND-06**: Ao fechar o app, todos os processos/ptys filhos são encerrados (sem zumbis/órfãos)
+- [x] **FND-01**: O app abre uma janela funcional no Linux/Wayland (Hyprland) sem tela preta (Wayland/DMABUF fix aplicado em `main()`)
+- [x] **FND-02**: O backend spawna um processo em pty e lê sua saída sem bloquear o runtime async (leitura em `spawn_blocking`)
+- [x] **FND-03**: A saída do pty chega ao frontend em streaming via Channel, preservando UTF-8/ANSI em fronteiras de chunk
+- [x] **FND-04**: O frontend envia entrada de teclado ao pty (round-trip de digitação funciona)
+- [x] **FND-05**: Redimensionar o terminal ajusta o pty (SIGWINCH) sem loop de resize
+- [x] **FND-06**: Ao fechar o app, todos os processos/ptys filhos são encerrados (sem zumbis/órfãos)
 
 ### Terminal Node
 
@@ -80,12 +80,12 @@ Explicitamente excluído. Documentado para evitar scope creep.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FND-01 | Phase 1 | Pending |
-| FND-02 | Phase 1 | Pending |
-| FND-03 | Phase 1 | Pending |
-| FND-04 | Phase 1 | Pending |
-| FND-05 | Phase 1 | Pending |
-| FND-06 | Phase 1 | Pending |
+| FND-01 | Phase 1 | Complete |
+| FND-02 | Phase 1 | Complete |
+| FND-03 | Phase 1 | Complete |
+| FND-04 | Phase 1 | Complete |
+| FND-05 | Phase 1 | Complete |
+| FND-06 | Phase 1 | Complete |
 | ORCH-01 | Phase 2 | Pending |
 | ORCH-04 | Phase 2 | Pending |
 | ORCH-05 | Phase 2 | Pending |
@@ -107,6 +107,7 @@ Explicitamente excluído. Documentado para evitar scope creep.
 | GRP-03 | Phase 4 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 25 total
 - Mapped to phases: 25
 - Unmapped: 0

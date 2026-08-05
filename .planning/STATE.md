@@ -4,17 +4,17 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 1
 current_phase_name: Foundation — Tauri + PTY
-status: executing
+status: verifying
 stopped_at: Phase 1 UI-SPEC approved
-last_updated: "2026-08-05T11:59:21.222Z"
-last_activity: 2026-08-04
-last_activity_desc: Roadmap criado; 25 requisitos mapeados em 4 fases
+last_updated: "2026-08-05T12:07:47.326Z"
+last_activity: 2026-08-05
+last_activity_desc: Phase 1 execution started
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 3
-  completed_plans: 0
-  percent: 0
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 1
+  percent: 25
 ---
 
 # Project State
@@ -24,16 +24,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-04)
 
 **Core value:** Ver os subagentes do Claude trabalhando ao vivo — cada um no seu terminal visível no canvas — enquanto um Claude pai os orquestra e recebe os resultados de volta.
-**Current focus:** Phase 1 — Foundation (Tauri + PTY)
+**Current focus:** Phase 1 — Foundation — Tauri + PTY
 
 ## Current Position
 
-Phase: 1 of 4 (Foundation — Tauri + PTY)
-Plan: 0 of ? in current phase
-Status: Ready to execute
-Last activity: 2026-08-04 — Roadmap criado; 25 requisitos mapeados em 4 fases
+Phase: 1 (Foundation — Tauri + PTY) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-08-05 — Phase 1 Plan 1 executed (Tasks 1+2 complete; Task 3 human-verify checkpoint pending)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
@@ -50,6 +50,7 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 **Recent Trend:** No data yet
+| Phase 01-foundation-tauri-pty P01 | 4min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -60,6 +61,9 @@ Recent decisions affecting current work:
 
 - [Roadmap]: Phase 2 (MCP spike) mantida isolada mesmo com granularity=coarse — risco da costura MCP-em-Tauri justifica binário standalone antes do canvas
 - [Roadmap]: Polish/cleanup folded nas fases de conteúdo — TERM-03/04 e FND-06 cobrem status e kill
+- [Phase 1, Plan 1]: sync_channel(64) bounded for D-04 fan-out — try_send drop-on-full ensures read thread never blocks on slow frontend
+- [Phase 1, Plan 1]: stdout_buf: Arc<Mutex<Vec<u8>>> in PtySession accumulates all PTY output for Phase 4 MCP spawn_agent return path
+- [Phase 1, Plan 1]: ResizeObserver debounce 16ms (~1 frame) coalesces resize animation bursts into one fit.fit() call
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-05T11:41:57.680Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-foundation-tauri-pty/01-UI-SPEC.md
+Last session: 2026-08-05T12:07:22.740Z
+Stopped at: Phase 1 Plan 1 — Task 3 checkpoint:human-verify (5 ROADMAP criteria)
+Resume file: .planning/phases/01-foundation-tauri-pty/01-01-SUMMARY.md
