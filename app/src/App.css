@@ -6,6 +6,23 @@
   --muted: #8a817a;
   --brand-a: #9e2a1a;
   --brand-b: #5c160d;
+
+  /* Phase 3: Canvas + Node tokens */
+  --node-border: #2a2622;
+  --node-border-focused: #4a3830;
+  --group-border: #2e2420;
+  --group-bg: rgba(22, 21, 20, 0.55);
+  --status-running: #3a9e4a;
+  --status-ok: #5a8a6a;
+  --status-error: #c9433a;
+  --kill-hover-bg: rgba(201, 67, 58, 0.18);
+  --canvas-dot: #2a2622;
+  --node-header-h: 32px;
+  --node-min-w: 480px;
+  --node-min-h: 240px;
+  --group-label-h: 28px;
+  --canvas-dot-size: 2px;
+  --canvas-dot-gap: 24px;
 }
 
 * {
@@ -64,6 +81,42 @@ body {
   font-size: 12px;
 }
 
+/* Canvas area — fills remaining viewport below app-header */
+.canvas-area {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  background: var(--bg);
+}
+
+/* Empty state — centred overlay when no nodes exist */
+.canvas-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  user-select: none;
+  gap: 6px;
+}
+
+.canvas-empty-heading {
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--muted);
+  margin: 0;
+}
+
+.canvas-empty-body {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+  opacity: 0.7;
+}
+
+/* Legacy terminal wrap (Phase 1) — keep for reference, unused in Phase 3 */
 .term-wrap {
   flex: 1;
   min-height: 0;

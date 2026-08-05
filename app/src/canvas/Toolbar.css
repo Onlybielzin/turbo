@@ -1,0 +1,32 @@
+/* Toolbar — design contract: 03-UI-SPEC.md */
+
+.canvas-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+}
+
+.canvas-toolbar__btn {
+  height: 28px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.canvas-toolbar__btn:hover {
+  background: var(--border);
+}
+
+.canvas-toolbar__btn:active {
+  opacity: 0.85;
+}

@@ -1,0 +1,115 @@
+/* TerminalNode — design contract: 03-UI-SPEC.md */
+
+.terminal-node {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--node-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--panel);
+  position: relative;
+}
+
+.terminal-node--selected,
+.terminal-node:focus-within {
+  border-color: var(--node-border-focused);
+}
+
+/* Header: 32px fixed height, gradient brand-a → brand-b */
+.terminal-node__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--node-header-h, 32px);
+  padding: 0 8px;
+  background: linear-gradient(180deg, var(--brand-a), var(--brand-b));
+  user-select: none;
+  flex-shrink: 0;
+  cursor: grab;
+}
+
+.terminal-node__header:active {
+  cursor: grabbing;
+}
+
+/* Status dot: 8×8px circle */
+.terminal-node__status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.terminal-node__status-dot--running {
+  background-color: var(--status-running);
+}
+
+.terminal-node__status-dot--ok {
+  background-color: var(--status-ok);
+}
+
+.terminal-node__status-dot--error {
+  background-color: var(--status-error);
+}
+
+/* Node label: 12px/700 */
+.terminal-node__label {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* Kill button: 24×24px tap target */
+.terminal-node__kill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  font-weight: 400;
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.terminal-node__kill:hover {
+  background: var(--kill-hover-bg);
+  color: #fff;
+}
+
+.terminal-node__kill:active {
+  opacity: 0.8;
+}
+
+/* Body: xterm fills flush, no padding */
+.terminal-node__body {
+  flex: 1;
+  min-height: 0;
+  background: var(--panel);
+  padding: 0;
+  overflow: hidden;
+  outline: none;
+}
+
+/* xterm.js overrides inside the node body */
+.terminal-node__body .xterm {
+  width: 100%;
+  height: 100%;
+}
+
+.terminal-node__body .xterm-viewport {
+  background-color: #161514 !important;
+}

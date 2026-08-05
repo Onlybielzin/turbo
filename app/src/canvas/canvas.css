@@ -1,0 +1,91 @@
+/* Phase 3: @xyflow/react dark theme overrides */
+
+/* Canvas background */
+.react-flow__background {
+  background-color: var(--bg);
+}
+
+/* Dot pattern (BackgroundVariant.Dots) — colour overridden via prop; redundant rule for fallback */
+.react-flow__background pattern circle {
+  fill: var(--canvas-dot);
+}
+
+/* Remove default white node background/shadow; node components own their own styling */
+.react-flow__node {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* Controls panel (bottom-right) */
+.react-flow__controls {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: var(--panel);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  fill: var(--text);
+  width: 28px;
+  height: 28px;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: var(--border);
+}
+
+.react-flow__controls-button svg {
+  fill: var(--text);
+  max-width: 14px;
+  max-height: 14px;
+}
+
+/* Edge paths — Phase 4 prep */
+.react-flow__edge-path {
+  stroke: var(--border);
+  stroke-width: 1.5;
+}
+
+.react-flow__edge-interaction {
+  stroke: transparent;
+  stroke-width: 10;
+}
+
+/* Attribution strip (remove branding in personal tool) */
+.react-flow__attribution {
+  display: none;
+}
+
+/* Panel (minimap + controls wrapper) */
+.react-flow__panel {
+  background: transparent;
+}
+
+/* Selection box */
+.react-flow__selection {
+  background: rgba(158, 42, 26, 0.08);
+  border: 1px solid var(--brand-a);
+}
+
+/* Node resizer handle */
+.react-flow__resize-control.handle {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--border);
+  border: 1px solid var(--muted);
+}
+
+.react-flow__resize-control.handle:hover {
+  background: var(--muted);
+}

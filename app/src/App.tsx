@@ -1,4 +1,4 @@
-import { Terminal } from "./components/Terminal";
+import { Canvas } from "./canvas/Canvas";
 import "./App.css";
 
 function App() {
@@ -7,11 +7,9 @@ function App() {
       <header className="app-header">
         <span className="brand-mark">V</span>
         <span className="brand-name">Turbo</span>
-        <span className="app-subtitle">canvas de agentes — phase 1</span>
+        <span className="app-subtitle">canvas de agentes</span>
       </header>
-      <main className="term-wrap">
-        <Terminal />
-      </main>
+      <Canvas />
     </div>
   );
 }
