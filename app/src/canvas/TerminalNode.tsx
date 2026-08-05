@@ -21,7 +21,8 @@ type TerminalNodeProps = NodeProps & { data: TerminalNodeData };
 function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
-  const { removeNode, updateNodeStatus, setPtyId } = useCanvasStore();
+  const { removeNode, updateNodeStatus, setPtyId, normalizeGroups } =
+    useCanvasStore();
 
   const status: NodeStatus = data.status ?? "running";
 
@@ -75,10 +76,14 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       onFocus={handleFocus}
       onBlur={handleBlur}
     >
+      {/* Always mounted so the node is always resizable; the handles are shown
+          on hover / selection via CSS (xterm can steal the click that would
+          otherwise select the node). */}
       <NodeResizer
         minWidth={240}
         minHeight={160}
-        isVisible={selected ?? false}
+        isVisible
+        onResizeEnd={() => normalizeGroups()}
       />
       <div className="terminal-node__header" data-drag-handle>
         <span
@@ -98,7 +103,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       </div>
       <div
         ref={hostRef}
-        className="terminal-node__body"
+        className="terminal-node__body nodrag nowheel nopan"
         tabIndex={0}
       />
     </div>

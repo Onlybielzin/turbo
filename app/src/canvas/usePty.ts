@@ -79,9 +79,23 @@ export function usePty({
     const host = hostRef.current;
     if (!host) return;
 
+    // Reset the disposed flag on every (re)mount. React StrictMode in dev runs
+    // setup → cleanup → setup on the SAME hook instance; without this reset the
+    // second setup would see `disposedRef.current === true` (leftover from the
+    // first cleanup) and immediately kill its freshly-spawned PTY — the process
+    // appeared to exit instantly ("[processo encerrado]").
+    disposedRef.current = false;
+
     const term = new XTerm({
-      fontFamily: 'ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace',
-      fontSize: 13,
+      // Use the ACTUAL installed font name. The system has "JetBrainsMono Nerd
+      // Font Mono" (single-cell-width variant), NOT "JetBrains Mono" — the old
+      // family matched nothing and fell back to a wide generic monospace, which
+      // is why glyphs looked spaced-out / ugly.
+      fontFamily:
+        '"JetBrainsMono Nerd Font Mono", "JetBrainsMono NFM", "JetBrainsMono Nerd Font", ui-monospace, monospace',
+      fontSize: 14,
+      lineHeight: 1.0,
+      letterSpacing: 0,
       cursorBlink: true,
       theme: {
         background: "#161514",
@@ -96,10 +110,39 @@ export function usePty({
     term.loadAddon(fit);
     term.open(host);
 
-    // Default renderer: CanvasAddon (not WebGL — limit to 1 WebGL context)
-    const canvasAddon = new CanvasAddon();
-    canvasAddonRef.current = canvasAddon;
-    term.loadAddon(canvasAddon);
+    // Renderer: xterm's built-in DOM renderer (no Canvas/WebGL addon). ReactFlow
+    // applies transform:scale() to the whole canvas for pan/zoom; the DOM renderer
+    // stays crisp under that scale (the browser re-rasterises vector glyphs),
+    // whereas a Canvas/WebGL bitmap gets resampled into blurry, oddly-spaced text
+    // when zoomed. For a handful of terminals the DOM renderer's perf is plenty.
+
+    // ── Clipboard: copy-on-select + Ctrl+Shift+C (copy) / Ctrl+Shift+V (paste) ──
+    // Text selection itself is enabled by the `nodrag`/`nowheel` classes on the
+    // body (so dragging selects instead of moving the node). Selecting with the
+    // mouse auto-copies; the shortcuts give explicit copy/paste.
+    const copySelection = () => {
+      const sel = term.getSelection();
+      if (sel && sel.trim()) void navigator.clipboard.writeText(sel).catch(() => {});
+    };
+    host.addEventListener("mouseup", copySelection);
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
+        copySelection();
+        return false; // handled — don't forward to the PTY
+      }
+      if (e.ctrlKey && e.shiftKey && (e.key === "V" || e.key === "v")) {
+        void navigator.clipboard
+          .readText()
+          .then((t) => {
+            if (t && ptyIdRef.current !== null)
+              void invoke("pty_write", { id: ptyIdRef.current, data: t });
+          })
+          .catch(() => {});
+        return false;
+      }
+      return true;
+    });
 
     // Fit after renderer is attached. Use offsetWidth/offsetHeight so we get
     // pre-transform dimensions (correct when ReactFlow zooms the canvas).
@@ -220,34 +263,11 @@ export function usePty({
     void isExternalPty; // suppress unused warning
 
     // ── WebGL renderer switching ──────────────────────────────────────────
-    activateWebGLRef.current = () => {
-      if (webGLFocusedNodeId === nodeId) return; // already active
-      // If another node has WebGL, do nothing (they will deactivate on blur)
-      if (webGLFocusedNodeId !== null) return;
-
-      void import("@xterm/addon-webgl").then(({ WebglAddon }) => {
-        if (webGLFocusedNodeId !== null || !termRef.current) return;
-        try {
-          // Detach canvas addon
-          if (canvasAddonRef.current) {
-            // CanvasAddon has no dispose method — we recreate on switch back
-            // Actually canvasAddon.dispose() should work in newer builds
-            canvasAddonRef.current.dispose?.();
-            canvasAddonRef.current = null;
-          }
-          const webgl = new WebglAddon();
-          webgl.onContextLoss(() => {
-            // Fallback to canvas on context loss
-            deactivateWebGLRef.current();
-          });
-          termRef.current.loadAddon(webgl);
-          webGLAddonRef.current = webgl;
-          webGLFocusedNodeId = nodeId;
-        } catch {
-          // WebGL not available — stay on canvas renderer
-        }
-      });
-    };
+    // Renderer switching disabled: keep the crisp DOM renderer at all times.
+    // Canvas/WebGL render to a bitmap that ReactFlow's zoom transform resamples
+    // into blurry text; DOM text stays sharp at any zoom. No-op so TerminalNode's
+    // focus handler stays valid.
+    activateWebGLRef.current = () => {};
 
     deactivateWebGLRef.current = () => {
       if (webGLFocusedNodeId !== nodeId) return;
@@ -277,6 +297,7 @@ export function usePty({
       disposedRef.current = true;
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
+      host.removeEventListener("mouseup", copySelection);
 
       void unlistenExit.then((f) => f());
 
@@ -290,7 +311,31 @@ export function usePty({
         void invoke("pty_kill", { id: ptyIdRef.current });
         ptyIdRef.current = null;
       }
-      term.dispose();
+
+      // Tear down xterm DEFENSIVELY. @xterm/addon-canvas 0.7 on xterm 6 throws in
+      // its dispose path (reads a disposed `_linkifier2`) when the terminal disposes
+      // the addon mid-teardown — that uncaught throw used to unmount the whole React
+      // tree (the "black screen" on group creation, and would also fire on node kill
+      // in production). Dispose the render addon FIRST, while the terminal is still
+      // alive (so the renderer can reset to DOM cleanly), then dispose the terminal.
+      // Every step is guarded so cleanup can never throw.
+      try {
+        canvasAddonRef.current?.dispose?.();
+      } catch {
+        /* addon-canvas dispose bug — safe to ignore, terminal is going away */
+      }
+      canvasAddonRef.current = null;
+      try {
+        webGLAddonRef.current?.dispose?.();
+      } catch {
+        /* ignore */
+      }
+      webGLAddonRef.current = null;
+      try {
+        term.dispose();
+      } catch {
+        /* xterm can still throw during internal addon teardown — swallow it */
+      }
       termRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

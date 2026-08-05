@@ -1,4 +1,5 @@
 import { Canvas } from "./canvas/Canvas";
+import { ErrorBoundary } from "./canvas/ErrorBoundary";
 import "./App.css";
 
 function App() {
@@ -9,7 +10,9 @@ function App() {
         <span className="brand-name">Turbo</span>
         <span className="app-subtitle">canvas de agentes</span>
       </header>
-      <Canvas />
+      <ErrorBoundary label="Canvas">
+        <Canvas />
+      </ErrorBoundary>
     </div>
   );
 }
