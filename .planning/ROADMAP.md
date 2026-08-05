@@ -8,7 +8,7 @@ Turbo é um cockpit visual pessoal: canvas infinito estilo Figma onde cada nó �
 
 - [x] **Phase 1: Foundation — Tauri + PTY** - Janela Wayland funcional e bridge PTY completo (spawn/read/write/resize/kill) (completed 2026-08-05)
 - [x] **Phase 2: MCP Spike (binário isolado)** - Provar spawn_agent bloqueante + progress notifications + depth guard fora do Tauri antes de qualquer canvas (completed 2026-08-05)
-- [ ] **Phase 3: Canvas + Terminal Nodes + Grupos** - ReactFlow canvas com TerminalNodes ao vivo (xterm.js), arraste, zoom e GroupFrames com cwd
+- [x] **Phase 3: Canvas + Terminal Nodes + Grupos** - ReactFlow canvas com TerminalNodes ao vivo (xterm.js), arraste, zoom e GroupFrames com cwd (completed 2026-08-05)
 - [ ] **Phase 4: Orquestração MCP Integrada** - Servidor MCP embutido no Tauri completo, spawn_agent criando filhos no canvas com arestas pai→filho e grupos corretos
 
 ## Phase Details
@@ -60,7 +60,10 @@ Turbo é um cockpit visual pessoal: canvas infinito estilo Figma onde cada nó �
   5. Dois GroupFrames com cwds diferentes coexistem no canvas — cada um tem seu Claude pai e seus filhos contidos visualmente no frame
   6. 15 terminais simultâneos rodam sem perda de contexto WebGL e sem jank visível no pan/zoom (ReactProfiler sem re-render cascata)
 
-**Plans**: TBD
+**Plans**: 1/1 plans complete
+
+- [ ] 03-PLAN.md
+
 **UI hint**: yes
 
 ### Phase 4: Orquestração MCP Integrada
@@ -84,5 +87,5 @@ Turbo é um cockpit visual pessoal: canvas infinito estilo Figma onde cada nó �
 |-------|----------------|--------|-----------|
 | 1. Foundation — Tauri + PTY | 1/1 | Complete   | 2026-08-05 |
 | 2. MCP Spike (binário isolado) | 1/1 | Complete   | 2026-08-05 |
-| 3. Canvas + Terminal Nodes + Grupos | 0/? | Not started | - |
+| 3. Canvas + Terminal Nodes + Grupos | 1/1 | Complete   | 2026-08-05 |
 | 4. Orquestração MCP Integrada | 0/? | Not started | - |

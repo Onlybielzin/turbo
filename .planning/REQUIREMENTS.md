@@ -18,17 +18,17 @@ Requisitos da release inicial. Cada um mapeia para fases do roadmap.
 
 ### Terminal Node
 
-- [ ] **TERM-01**: Cada nó do canvas renderiza um terminal xterm.js ligado a um pty por id
-- [ ] **TERM-02**: O renderer padrão é canvas (addon-canvas); WebGL fica reservado só ao terminal em foco (evita esgotar contextos WebGL)
-- [ ] **TERM-03**: O terminal mostra estado de saída do processo (rodando / terminou ok / terminou com erro)
-- [ ] **TERM-04**: O usuário pode matar/limpar um nó-terminal individual pela UI
+- [x] **TERM-01**: Cada nó do canvas renderiza um terminal xterm.js ligado a um pty por id
+- [x] **TERM-02**: O renderer padrão é canvas (addon-canvas); WebGL fica reservado só ao terminal em foco (evita esgotar contextos WebGL)
+- [x] **TERM-03**: O terminal mostra estado de saída do processo (rodando / terminou ok / terminou com erro)
+- [x] **TERM-04**: O usuário pode matar/limpar um nó-terminal individual pela UI
 
 ### Canvas
 
-- [ ] **CANV-01**: Canvas infinito com pan e zoom fluidos
-- [ ] **CANV-02**: Nós podem ser arrastados e reposicionados
-- [ ] **CANV-03**: Arestas ligam pai→filho, tornando a árvore de spawn visível
-- [ ] **CANV-04**: O canvas continua responsivo com múltiplos terminais ativos (sem morte de perf por re-render)
+- [x] **CANV-01**: Canvas infinito com pan e zoom fluidos
+- [x] **CANV-02**: Nós podem ser arrastados e reposicionados
+- [x] **CANV-03**: Arestas ligam pai→filho, tornando a árvore de spawn visível
+- [x] **CANV-04**: O canvas continua responsivo com múltiplos terminais ativos (sem morte de perf por re-render)
 
 ### Orchestration (MCP + spawn_agent)
 
@@ -42,10 +42,10 @@ Requisitos da release inicial. Cada um mapeia para fases do roadmap.
 
 ### Groups / Multi-Project
 
-- [ ] **GRP-01**: O usuário pode criar múltiplos grupos/projetos no mesmo canvas, cada um como um frame separado
-- [ ] **GRP-02**: Cada grupo tem seu próprio diretório de trabalho (cwd) e seu próprio Claude pai lançado nesse cwd
+- [x] **GRP-01**: O usuário pode criar múltiplos grupos/projetos no mesmo canvas, cada um como um frame separado
+- [x] **GRP-02**: Cada grupo tem seu próprio diretório de trabalho (cwd) e seu próprio Claude pai lançado nesse cwd
 - [ ] **GRP-03**: O servidor MCP associa cada chamada `spawn_agent` ao grupo do pai que chamou, atachando o filho no frame certo
-- [ ] **GRP-04**: Grupos rodam simultaneamente e de forma isolada (um não interfere no outro)
+- [x] **GRP-04**: Grupos rodam simultaneamente e de forma isolada (um não interfere no outro)
 
 ## v2 Requirements
 
@@ -90,17 +90,17 @@ Explicitamente excluído. Documentado para evitar scope creep.
 | ORCH-04 | Phase 2 | Complete |
 | ORCH-05 | Phase 2 | Complete |
 | ORCH-06 | Phase 2 | Complete |
-| TERM-01 | Phase 3 | Pending |
-| TERM-02 | Phase 3 | Pending |
-| TERM-03 | Phase 3 | Pending |
-| TERM-04 | Phase 3 | Pending |
-| CANV-01 | Phase 3 | Pending |
-| CANV-02 | Phase 3 | Pending |
-| CANV-03 | Phase 3 | Pending |
-| CANV-04 | Phase 3 | Pending |
-| GRP-01 | Phase 3 | Pending |
-| GRP-02 | Phase 3 | Pending |
-| GRP-04 | Phase 3 | Pending |
+| TERM-01 | Phase 3 | Complete |
+| TERM-02 | Phase 3 | Complete |
+| TERM-03 | Phase 3 | Complete |
+| TERM-04 | Phase 3 | Complete |
+| CANV-01 | Phase 3 | Complete |
+| CANV-02 | Phase 3 | Complete |
+| CANV-03 | Phase 3 | Complete |
+| CANV-04 | Phase 3 | Complete |
+| GRP-01 | Phase 3 | Complete |
+| GRP-02 | Phase 3 | Complete |
+| GRP-04 | Phase 3 | Complete |
 | ORCH-02 | Phase 4 | Pending |
 | ORCH-03 | Phase 4 | Pending |
 | ORCH-07 | Phase 4 | Pending |
