@@ -1,0 +1,68 @@
+name: Release
+
+# Builda o app Tauri (Linux) e publica um GitHub Release com os
+# instaladores (.AppImage + .deb) sempre que uma tag "v*" for enviada.
+# Dispare com: git tag v0.1.0 && git push origin v0.1.0
+# (ou use a skill /publish do projeto, que automatiza o bump + tag).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux system deps (Tauri v2)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo (src-tauri)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Install frontend deps
+        run: npm ci
+        working-directory: app
+
+      - name: Build and publish release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: "Turbo ${{ github.ref_name }}"
+          releaseBody: "Instaladores Linux (.AppImage e .deb) gerados automaticamente pelo CI. Baixe abaixo."
+          releaseDraft: false
+          prerelease: false
+          args: "--bundles appimage,deb"
