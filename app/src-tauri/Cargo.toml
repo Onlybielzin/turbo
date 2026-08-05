@@ -25,4 +25,11 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 portable-pty = "0.9"
 anyhow = "1"
+# MCP server (Phase 4)
+rmcp = { version = "3.1.0", features = ["server", "macros", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+dashmap = "6"
 
