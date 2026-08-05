@@ -7,7 +7,7 @@
   height: 100%;
   border: 1px solid var(--group-border);
   border-radius: 8px;
-  overflow: visible;
+  overflow: hidden;
   position: relative;
   background: var(--group-bg);
 }
@@ -55,14 +55,14 @@
   line-height: 1;
 }
 
-/* Agents side menu — docked just outside the group's right edge */
+/* Agents side menu — docked inside the group's right gutter (reserved by
+ * SIDEBAR_RESERVE in the store's group auto-fit). Full height under the label bar. */
 .group-frame__sidebar {
   position: absolute;
-  top: 0;
-  left: 100%;
-  margin-left: 10px;
+  top: calc(var(--group-label-h, 28px) + 12px);
+  right: 12px;
+  bottom: 12px;
   width: 210px;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -70,8 +70,8 @@
   background: linear-gradient(180deg, var(--panel), var(--group-bg));
   border: 1px solid var(--group-border);
   border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-  z-index: 5;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 6;
 }
 
 .group-frame__sidebar-head {
@@ -100,7 +100,8 @@
   flex-direction: column;
   gap: 6px;
   overflow-y: auto;
-  max-height: 320px;
+  flex: 1;
+  min-height: 0;
 }
 
 .group-frame__empty {

@@ -145,6 +145,8 @@ interface CanvasState {
 // ── Group auto-sizing ─────────────────────────────────────────────────────────
 const GROUP_PAD = 32; // breathing room around child nodes
 const GROUP_TOP = 60; // label bar (28px) + padding — children start below it
+// Right gutter reserved inside every group for the docked "Agentes" side menu.
+const SIDEBAR_RESERVE = 234; // panel width (210) + gaps
 const MIN_GROUP_W = 640;
 const MIN_GROUP_H = 440;
 
@@ -181,7 +183,7 @@ function fitGroups(nodes: AppNode[]): AppNode[] {
       maxRight = Math.max(maxRight, c.position.x + w);
       maxBottom = Math.max(maxBottom, c.position.y + h);
     }
-    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + GROUP_PAD));
+    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + GROUP_PAD + SIDEBAR_RESERVE));
     const height = Math.max(MIN_GROUP_H, Math.round(maxBottom + GROUP_PAD));
     const cur = n.style ?? {};
     if (cur.width === width && cur.height === height) return n;
@@ -221,7 +223,7 @@ function reanchorGroups(nodes: AppNode[]): AppNode[] {
     // child moved inward — so shrinking a terminal shrinks the group back too.
     const dx = Math.round(GROUP_PAD - minX);
     const dy = Math.round(GROUP_TOP - minY);
-    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + dx + GROUP_PAD));
+    const width = Math.max(MIN_GROUP_W, Math.round(maxRight + dx + GROUP_PAD + SIDEBAR_RESERVE));
     const height = Math.max(MIN_GROUP_H, Math.round(maxBottom + dy + GROUP_PAD));
     adj.set(g.id, { dx, dy, width, height });
   }

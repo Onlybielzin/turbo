@@ -8,6 +8,7 @@
  * prompt as the interactive CLI's positional [PROMPT].
  */
 import { useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AGENT_OPTIONS,
@@ -69,7 +70,7 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
     }
   }, [busy, groupId, cwd, model, prompt, name, addTerminalNode, updateNodeLabel, onClose]);
 
-  return (
+  return createPortal(
     <div className="agent-modal__backdrop" onClick={onClose}>
       <div
         className="agent-modal"
@@ -153,6 +154,7 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
