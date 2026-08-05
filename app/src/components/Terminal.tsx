@@ -66,12 +66,17 @@ export function Terminal() {
       }
     })();
 
+    let resizeTimer: ReturnType<typeof setTimeout> | null = null;
     const resizeObserver = new ResizeObserver(() => {
-      try {
-        fit.fit();
-      } catch {
-        /* element not measurable yet */
-      }
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        try {
+          fit.fit();
+        } catch {
+          /* element not measurable yet */
+        }
+      }, 16);
     });
     resizeObserver.observe(host);
 
@@ -81,6 +86,7 @@ export function Terminal() {
 
     return () => {
       disposed = true;
+      if (resizeTimer) clearTimeout(resizeTimer);
       resizeObserver.disconnect();
       void unlisten.then((f) => f());
       if (ptyId !== null) void invoke("pty_kill", { id: ptyId });
