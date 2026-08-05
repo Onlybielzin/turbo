@@ -1,6 +1,14 @@
 ---
-gsd_state_version: '1.0'
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: milestone
+current_phase: 1
+current_phase_name: Foundation — Tauri + PTY
 status: planning
+stopped_at: Context gathered for phases 1-4
+last_updated: "2026-08-05T01:14:44.980Z"
+last_activity: 2026-08-04
+last_activity_desc: Roadmap criado; 25 requisitos mapeados em 4 fases
 progress:
   total_phases: 4
   completed_phases: 0
@@ -30,6 +38,7 @@ Progress: [░░░░░░░░░░] 0%
 ## Performance Metrics
 
 **Velocity:**
+
 - Total plans completed: 0
 - Average duration: —
 - Total execution time: 0 h
@@ -72,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-04
-Stopped at: Roadmap criado e aprovado; STATE.md e REQUIREMENTS.md atualizados
-Resume file: None
+Last session: 2026-08-05T01:14:44.974Z
+Stopped at: Context gathered for phases 1-4
+Resume file: .planning/phases/01-foundation-tauri-pty/01-CONTEXT.md
