@@ -4,9 +4,9 @@ milestone: v1.0
 milestone_name: milestone
 current_phase: 1
 current_phase_name: Foundation — Tauri + PTY
-status: planning
-stopped_at: Phase 2 spike implemented (compiles, server boots; progress notifications ORCH-05 pending). Phases 3-4 planned, not executed.
-last_updated: "2026-08-05T11:35:40.921Z"
+status: executing
+stopped_at: Phase 1 UI-SPEC approved
+last_updated: "2026-08-05T11:59:21.222Z"
 last_activity: 2026-08-04
 last_activity_desc: Roadmap criado; 25 requisitos mapeados em 4 fases
 progress:
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-08-04)
 
 Phase: 1 of 4 (Foundation — Tauri + PTY)
 Plan: 0 of ? in current phase
-Status: Ready to plan
+Status: Ready to execute
 Last activity: 2026-08-04 — Roadmap criado; 25 requisitos mapeados em 4 fases
 
 Progress: [░░░░░░░░░░] 0%
@@ -81,6 +81,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-08-05T11:35:40.915Z
-Stopped at: Phase 2 spike implemented (compiles, server boots; progress notifications ORCH-05 pending). Phases 3-4 planned, not executed.
-Resume file: spike/mcp-spike/README.md
+Last session: 2026-08-05T11:41:57.680Z
+Stopped at: Phase 1 UI-SPEC approved
+Resume file: .planning/phases/01-foundation-tauri-pty/01-UI-SPEC.md
