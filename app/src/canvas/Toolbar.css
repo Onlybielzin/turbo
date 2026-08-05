@@ -30,3 +30,37 @@
 .canvas-toolbar__btn:active {
   opacity: 0.85;
 }
+
+.canvas-toolbar__agent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.canvas-toolbar__agent-label {
+  opacity: 0.7;
+}
+
+.canvas-toolbar__select {
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+}
+
+.canvas-toolbar__select option {
+  background: var(--panel);
+  color: var(--text);
+}

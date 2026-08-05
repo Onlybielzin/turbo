@@ -32,6 +32,7 @@ use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 
 use super::spawn_agent::run_in_pty_blocking;
+use crate::agent::AgentBackend;
 use crate::PtyManager;
 
 // ─── State exposed to Tauri app state ────────────────────────────────────────
@@ -83,6 +84,12 @@ pub struct SpawnParams {
     /// The server sets `TURBO_MCP_DEPTH=(depth+1)` in the child's env.
     #[serde(default)]
     pub depth: u32,
+    /// Which backend/model the child runs on: "codex", "fable", "opus",
+    /// "sonnet", "haiku", or "claude"/"" for the default. Lets the orchestrator
+    /// pick per-agent — e.g. spawn a security agent on Codex, a backend worker
+    /// on Opus.
+    #[serde(default)]
+    pub agent: String,
 }
 
 #[tool_router(server_handler)]
@@ -151,19 +158,17 @@ impl SpawnServer {
 
         tracing::info!(label = %label, depth = p.depth, group_id = %p.group_id, "spawn_agent start");
 
-        // Build child command: claude -p <task> (non-interactive, text output)
-        let command = "claude".to_string();
-        let args = vec![
-            "-p".to_string(),
-            p.task.clone(),
-            "--output-format".to_string(),
-            "text".to_string(),
-            "--dangerously-skip-permissions".to_string(),
-        ];
+        // Build the child command from the requested backend (claude/model or codex).
+        let backend = AgentBackend::parse(&p.agent);
+        let (command, args) = backend.child_command(&p.task);
 
-        // Pass depth+1 explicitly so the child's spawn_agent calls include correct depth.
+        // Pass depth+1 explicitly so the child's spawn_agent calls include correct depth,
+        // and propagate the agent token so a child that itself orchestrates knows its kind.
         let next_depth = p.depth + 1;
-        let extra_env = vec![("TURBO_MCP_DEPTH".to_string(), next_depth.to_string())];
+        let extra_env = vec![
+            ("TURBO_MCP_DEPTH".to_string(), next_depth.to_string()),
+            ("TURBO_AGENT".to_string(), p.agent.clone()),
+        ];
 
         let progress_token: Option<ProgressToken> = meta.get_progress_token();
 

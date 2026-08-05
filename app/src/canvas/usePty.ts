@@ -190,7 +190,7 @@ export function usePty({
             // If the requested command wasn't found, fall back to the default shell
             if (command && String(spawnErr).toLowerCase().includes("no such file")) {
               term.writeln(
-                `\r\n\x1b[90m[claude não encontrado no PATH — abrindo shell]\x1b[0m`
+                `\r\n\x1b[90m[${command} não encontrado no PATH — abrindo shell]\x1b[0m`
               );
               ptyId = await spawnPty(); // spawn default shell
             } else {

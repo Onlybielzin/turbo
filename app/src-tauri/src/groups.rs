@@ -13,11 +13,17 @@ use std::sync::Mutex;
 use anyhow::{Context, Result};
 use serde_json::json;
 
+use crate::agent::AgentBackend;
+
 /// Runtime entry for one group.
 #[derive(Debug, Clone)]
 pub struct GroupEntry {
     #[allow(dead_code)] // used by get_cwd(), which is called by future MCP routing
     pub cwd: PathBuf,
+    /// The backend the group's orchestrator runs on. Reserved for routing
+    /// spawn_agent children to the parent's default backend.
+    #[allow(dead_code)]
+    pub backend: AgentBackend,
 }
 
 /// Registry: group_id → GroupEntry.
@@ -32,39 +38,52 @@ impl GroupRegistry {
     /// Precondition: the MCP server is already listening on `mcp_port`.
     /// This is guaranteed by the caller (create_group command) which only runs
     /// after `McpState` is populated (D-02).
-    pub fn register(&self, group_id: &str, cwd: &Path, mcp_port: u16) -> Result<()> {
-        // Write `.mcp.json` — the parent claude reads this on startup to find the tool.
-        // `group_id` is included in the URL so the MCP handler knows which frame to use.
-        let mcp_json_path = cwd.join(".mcp.json");
-        let config = json!({
-            "mcpServers": {
-                "turbo": {
-                    "type": "http",
-                    "url": format!("http://127.0.0.1:{}/mcp?group_id={}", mcp_port, group_id)
-                }
-            }
-        });
-        let content =
-            serde_json::to_string_pretty(&config).context("failed to serialise .mcp.json")?;
-        std::fs::write(&mcp_json_path, content)
-            .with_context(|| format!("failed to write {}", mcp_json_path.display()))?;
+    /// Returns the MCP server URL for this group (used by Codex-backed parents,
+    /// which wire the server inline via `-c` instead of a `.mcp.json` file).
+    pub fn register(
+        &self,
+        group_id: &str,
+        cwd: &Path,
+        mcp_port: u16,
+        backend: &AgentBackend,
+    ) -> Result<String> {
+        let mcp_url = format!("http://127.0.0.1:{}/mcp?group_id={}", mcp_port, group_id);
 
-        tracing::info!(
-            group_id = %group_id,
-            cwd = %cwd.display(),
-            port = mcp_port,
-            ".mcp.json written"
-        );
+        // Claude discovers the tool via `.mcp.json`; Codex takes the URL inline,
+        // so only write the file when the parent is Claude-backed.
+        if backend.uses_mcp_json() {
+            let mcp_json_path = cwd.join(".mcp.json");
+            let config = json!({
+                "mcpServers": {
+                    "turbo": {
+                        "type": "http",
+                        "url": mcp_url.clone()
+                    }
+                }
+            });
+            let content =
+                serde_json::to_string_pretty(&config).context("failed to serialise .mcp.json")?;
+            std::fs::write(&mcp_json_path, content)
+                .with_context(|| format!("failed to write {}", mcp_json_path.display()))?;
+
+            tracing::info!(
+                group_id = %group_id,
+                cwd = %cwd.display(),
+                port = mcp_port,
+                ".mcp.json written"
+            );
+        }
 
         let mut map = self.entries.lock().unwrap();
         map.insert(
             group_id.to_string(),
             GroupEntry {
                 cwd: cwd.to_path_buf(),
+                backend: backend.clone(),
             },
         );
 
-        Ok(())
+        Ok(mcp_url)
     }
 
     /// Look up the cwd for a group.

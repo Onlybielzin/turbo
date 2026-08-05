@@ -4,6 +4,7 @@
 // the same instance. The MCP server starts as a tokio task before any group is
 // created; `.mcp.json` is written ONLY after the health-check (D-02 contract).
 
+mod agent;
 mod groups;
 mod mcp;
 
@@ -19,8 +20,18 @@ use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, Pt
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use agent::AgentBackend;
 use groups::GroupRegistry;
 use mcp::McpState;
+
+/// Command + args the frontend should spawn for a group's interactive parent
+/// terminal. Computed server-side from the chosen backend so the frontend never
+/// duplicates the CLI/flag logic.
+#[derive(serde::Serialize)]
+pub struct ParentSpawn {
+    command: String,
+    args: Vec<String>,
+}
 
 // ─── PTY layer ────────────────────────────────────────────────────────────────
 
@@ -229,17 +240,21 @@ async fn create_group(
     mcp_state: State<'_, McpState>,
     group_id: String,
     cwd: String,
-) -> Result<(), String> {
+    backend: Option<String>,
+) -> Result<ParentSpawn, String> {
     let cwd_path = Path::new(&cwd);
+    let backend = AgentBackend::parse(backend.as_deref().unwrap_or(""));
 
-    // Write `.mcp.json` — server is already listening (D-02 guaranteed).
-    // The parent claude will start AFTER this function returns and the Toolbar
-    // calls addTerminalNode (which triggers usePty on mount).
-    registry
-        .register(&group_id, cwd_path, mcp_state.port)
-        .map_err(|e| format!("failed to write .mcp.json: {e}"))?;
+    // Register the group + wire the MCP server (writes `.mcp.json` for Claude,
+    // returns the URL for Codex). Server is already listening (D-02 guaranteed).
+    // The parent agent starts AFTER this returns and the Toolbar calls
+    // addTerminalNode (which triggers usePty on mount).
+    let mcp_url = registry
+        .register(&group_id, cwd_path, mcp_state.port, &backend)
+        .map_err(|e| format!("failed to register group: {e}"))?;
 
-    Ok(())
+    let (command, args) = backend.parent_command(&mcp_url);
+    Ok(ParentSpawn { command, args })
 }
 
 // ─── App entry point ──────────────────────────────────────────────────────────

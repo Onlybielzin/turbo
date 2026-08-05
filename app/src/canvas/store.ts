@@ -59,7 +59,7 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][]) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[]) => string;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -304,7 +304,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][]): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[]): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -335,6 +335,7 @@ export const useCanvasStore = create<CanvasState>()(
         status: "running" as NodeStatus,
         cwd,
         command,
+        args,
         env,
       } as TerminalNodeData,
       style: {
