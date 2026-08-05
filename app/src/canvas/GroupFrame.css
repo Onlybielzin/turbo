@@ -7,7 +7,8 @@
   height: 100%;
   border: 1px solid var(--group-border);
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
   background: var(--group-bg);
 }
 
@@ -54,77 +55,105 @@
   line-height: 1;
 }
 
-/* "+ Novo terminal" button: visible on label bar hover */
-.group-frame__add-terminal {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--muted);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 3px;
-  white-space: nowrap;
-  opacity: 1;
-  border: 1px solid var(--border);
-  transition: opacity 100ms, color 100ms, background 100ms;
-  flex-shrink: 0;
+/* Agents side menu — docked just outside the group's right edge */
+.group-frame__sidebar {
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 10px;
+  width: 210px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: linear-gradient(180deg, var(--panel), var(--group-bg));
+  border: 1px solid var(--group-border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 5;
 }
 
-.group-frame__label-bar:hover .group-frame__add-terminal {
-  opacity: 1;
-}
-
-.group-frame__add-terminal:hover {
-  color: var(--text);
-  background: var(--border);
-}
-
-/* Agents panel — build the project's team: pick model + prompt, add agent */
-.group-frame__agents {
+.group-frame__sidebar-head {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+
+.group-frame__sidebar-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.group-frame__sidebar-count {
+  font-size: 11px;
+  color: var(--text);
+  background: var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.group-frame__roster {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+  overflow-y: auto;
+  max-height: 320px;
+}
+
+.group-frame__empty {
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.group-frame__agent-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.group-frame__agent-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-frame__agent-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 7px;
   flex-shrink: 0;
 }
 
-.group-frame__agents-title {
-  font-size: 11px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.group-frame__agent-model {
-  height: 22px;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 3px;
+.group-frame__create {
+  height: 30px;
+  background: var(--accent, #6ea8fe);
+  border: 1px solid var(--accent, #6ea8fe);
+  border-radius: 6px;
+  color: #0b1220;
   font-size: 12px;
+  font-weight: 600;
+  font-family: ui-sans-serif, system-ui, sans-serif;
   cursor: pointer;
-  outline: none;
+  transition: filter 120ms;
 }
 
-.group-frame__agent-model option {
-  background: var(--panel);
-  color: var(--text);
-}
-
-.group-frame__agent-prompt {
-  height: 22px;
-  width: 160px;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  padding: 0 6px;
-  font-size: 12px;
-  outline: none;
-}
-
-.group-frame__agent-prompt::placeholder {
-  color: var(--muted);
+.group-frame__create:hover {
+  filter: brightness(1.08);
 }
 
 /* Body: transparent so --group-bg of the root shows through */

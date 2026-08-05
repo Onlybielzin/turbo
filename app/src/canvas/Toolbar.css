@@ -50,14 +50,27 @@
 }
 
 .canvas-toolbar__select {
-  height: 20px;
-  background: transparent;
-  border: none;
+  height: 22px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--bg, #0b0e14);
+  border: 1px solid var(--border);
+  border-radius: 4px;
   color: var(--text);
   font-size: 12px;
   font-family: inherit;
   cursor: pointer;
   outline: none;
+  padding: 0 24px 0 8px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b93a7' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 7px center;
+}
+
+.canvas-toolbar__select:focus,
+.canvas-toolbar__prompt:focus {
+  border-color: var(--accent, #6ea8fe);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent, #6ea8fe) 25%, transparent);
 }
 
 .canvas-toolbar__select option {

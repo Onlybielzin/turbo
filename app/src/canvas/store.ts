@@ -64,6 +64,47 @@ export const AGENT_OPTIONS: { value: string; label: string }[] = [
   { value: "codex", label: "Codex" },
 ];
 
+/** A ready-made agent: role name + backend model + starter prompt. Clicking a
+ *  preset in the create-agent modal pre-fills the form (still editable). */
+export interface AgentPreset {
+  name: string;
+  model: string;
+  prompt: string;
+}
+
+export const AGENT_PRESETS: AgentPreset[] = [
+  {
+    name: "Orquestrador",
+    model: "fable",
+    prompt:
+      "Você é o orquestrador da equipe. Planeje o trabalho e delegue subtarefas aos agentes usando a tool turbo spawn_agent (escolhendo o modelo certo por tarefa). Consolide os resultados.",
+  },
+  {
+    name: "Backend",
+    model: "opus",
+    prompt:
+      "Você é o agente de backend: APIs, banco de dados, lógica de servidor e integrações. Escreva código robusto e testável.",
+  },
+  {
+    name: "Frontend",
+    model: "sonnet",
+    prompt:
+      "Você é o agente de frontend: UI, componentes, estado e estilo. Priorize acessibilidade e uma interface limpa.",
+  },
+  {
+    name: "Segurança",
+    model: "codex",
+    prompt:
+      "Você é o agente de segurança: revise o código em busca de vulnerabilidades (OWASP), secrets expostos e validação de entrada. Reporte riscos com severidade.",
+  },
+  {
+    name: "Testes",
+    model: "haiku",
+    prompt:
+      "Você é o agente de testes: escreva e rode testes unitários/integração, cubra casos de borda e garanta a suíte verde.",
+  },
+];
+
 interface CanvasState {
   nodes: AppNode[];
   edges: Edge[];
