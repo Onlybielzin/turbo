@@ -8,6 +8,7 @@ mod agent;
 mod groups;
 mod mcp;
 mod usage;
+mod worktrees;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -338,7 +339,10 @@ pub fn run() {
             pty_kill,
             create_group,
             session_usage,
-            cli_status
+            cli_status,
+            worktrees::list_worktrees,
+            worktrees::create_worktree,
+            worktrees::ensure_worktree_mcp,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

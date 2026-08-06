@@ -107,6 +107,15 @@ pub struct SpawnParams {
     /// The child's actual TASK is `task` (the one-shot user message).
     #[serde(default)]
     pub prompt: String,
+    /// Absolute path of the worktree where the child agent should run.
+    /// Empty string (the default) means: use the same worktree as the parent,
+    /// which is passed explicitly via TURBO_WORKTREE_CWD in the parent's env
+    /// and forwarded here by the orchestrator. Pass a different worktree path
+    /// to redirect the child to another worktree of the same group.
+    /// Explicit, not inherited from the Tauri process env — same discipline as
+    /// `depth` (Phase 4 review fix: Tauri process env is not reliable for this).
+    #[serde(default)]
+    pub worktree: String,
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -183,7 +192,9 @@ impl SpawnServer {
     #[tool(
         name = "spawn_agent",
         description = "Spawn a claude subagent on a task and return its final output (blocking). \
-            Provide group_id and parent_pty_id so the child appears in the correct canvas frame."
+            Provide group_id and parent_pty_id so the child appears in the correct canvas frame. \
+            Optional: pass worktree (absolute path) to run the child in a specific git worktree \
+            of the same group; omit to run without a worktree override."
     )]
     async fn spawn_agent(
         &self,
@@ -238,20 +249,34 @@ impl SpawnServer {
         };
         let (command, args) = backend.child_command(&p.task, role);
 
+        // Derive the cwd for the child: explicit worktree param takes priority;
+        // empty string means the orchestrator did not specify a worktree override
+        // (the child will inherit whatever TURBO_WORKTREE_CWD the parent passed in).
+        let cwd: Option<String> = if p.worktree.trim().is_empty() {
+            None
+        } else {
+            Some(p.worktree.clone())
+        };
+
         // Pass depth+1 explicitly so the child's spawn_agent calls include correct depth,
         // and propagate the agent token so a child that itself orchestrates knows its kind.
+        // Also propagate the worktree path so a child that itself orchestrates knows its
+        // worktree context and can pass it in its own spawn_agent calls.
         let next_depth = p.depth + 1;
-        let extra_env = vec![
+        let mut extra_env = vec![
             ("TURBO_MCP_DEPTH".to_string(), next_depth.to_string()),
             ("TURBO_AGENT".to_string(), p.agent.clone()),
         ];
+        if !p.worktree.trim().is_empty() {
+            extra_env.push(("TURBO_WORKTREE_CWD".to_string(), p.worktree.clone()));
+        }
 
         let progress_token: Option<ProgressToken> = meta.get_progress_token();
 
         // Run PTY in spawn_blocking — no thread leak on task cancellation;
         // the OS thread finishes naturally and the JoinHandle is owned by tokio.
         let pty_task = tokio::task::spawn_blocking(move || {
-            run_in_pty_blocking(command, args, None, extra_env)
+            run_in_pty_blocking(command, args, cwd, extra_env)
         });
         tokio::pin!(pty_task);
 

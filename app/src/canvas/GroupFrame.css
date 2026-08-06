@@ -276,3 +276,75 @@
   flex: 1;
   min-height: 0;
 }
+
+/* ── Worktree lanes bar ─────────────────────────────────────────────────────── */
+
+/* Thin horizontal strip beneath the label bar showing one chip per worktree. */
+.group-frame__lanes {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--group-border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none; /* Firefox */
+}
+
+.group-frame__lanes::-webkit-scrollbar {
+  display: none;
+}
+
+/* Single worktree chip */
+.group-frame__lane {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 9px;
+  font-size: 10px;
+  font-family: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace;
+  font-weight: 500;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 100ms, border-color 100ms, background 100ms;
+  white-space: nowrap;
+}
+
+.group-frame__lane:hover {
+  color: var(--text);
+  border-color: var(--muted);
+}
+
+/* Active (selected) raia gets accent colour + subtle glow */
+.group-frame__lane.is-active {
+  color: var(--accent, #6ea8fe);
+  border-color: var(--accent, #6ea8fe);
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 10%, transparent);
+}
+
+/* "+ Worktree" add button */
+.group-frame__lane-add {
+  flex-shrink: 0;
+  height: 18px;
+  padding: 0 9px;
+  font-size: 10px;
+  font-family: ui-monospace, "JetBrains Mono", "Fira Code", Menlo, monospace;
+  color: var(--muted);
+  background: transparent;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 100ms, border-color 100ms;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+.group-frame__lane-add:hover {
+  color: var(--text);
+  border-color: var(--muted);
+  border-style: solid;
+}

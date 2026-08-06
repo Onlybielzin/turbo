@@ -10,10 +10,42 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde_json::json;
 
 use crate::agent::AgentBackend;
+
+/// Write `.mcp.json` into `cwd` for the given group and MCP port.
+///
+/// This is the single source of truth for the `.mcp.json` format used by the
+/// embedded MCP server (Streamable HTTP, type "http", SSE is deprecated).
+/// Both `GroupRegistry::register` and `worktrees::ensure_worktree_mcp` call
+/// this function so the format is never duplicated.
+///
+/// Returns the MCP URL that was written.
+pub fn write_mcp_json(cwd: &Path, group_id: &str, mcp_port: u16) -> Result<String, String> {
+    let mcp_url = format!("http://127.0.0.1:{}/mcp?group_id={}", mcp_port, group_id);
+    let mcp_json_path = cwd.join(".mcp.json");
+    let config = json!({
+        "mcpServers": {
+            "turbo": {
+                "type": "http",
+                "url": mcp_url.clone()
+            }
+        }
+    });
+    let content = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("failed to serialise .mcp.json: {e}"))?;
+    std::fs::write(&mcp_json_path, content)
+        .map_err(|e| format!("failed to write {}: {e}", mcp_json_path.display()))?;
+    tracing::info!(
+        group_id = %group_id,
+        cwd = %cwd.display(),
+        port = mcp_port,
+        ".mcp.json written"
+    );
+    Ok(mcp_url)
+}
 
 /// Runtime entry for one group.
 #[derive(Debug, Clone)]
@@ -47,32 +79,15 @@ impl GroupRegistry {
         mcp_port: u16,
         backend: &AgentBackend,
     ) -> Result<String> {
-        let mcp_url = format!("http://127.0.0.1:{}/mcp?group_id={}", mcp_port, group_id);
-
         // Claude discovers the tool via `.mcp.json`; Codex takes the URL inline,
         // so only write the file when the parent is Claude-backed.
-        if backend.uses_mcp_json() {
-            let mcp_json_path = cwd.join(".mcp.json");
-            let config = json!({
-                "mcpServers": {
-                    "turbo": {
-                        "type": "http",
-                        "url": mcp_url.clone()
-                    }
-                }
-            });
-            let content =
-                serde_json::to_string_pretty(&config).context("failed to serialise .mcp.json")?;
-            std::fs::write(&mcp_json_path, content)
-                .with_context(|| format!("failed to write {}", mcp_json_path.display()))?;
-
-            tracing::info!(
-                group_id = %group_id,
-                cwd = %cwd.display(),
-                port = mcp_port,
-                ".mcp.json written"
-            );
-        }
+        // `write_mcp_json` is the single source of truth for the .mcp.json format.
+        let mcp_url = if backend.uses_mcp_json() {
+            write_mcp_json(cwd, group_id, mcp_port)
+                .map_err(|e| anyhow::anyhow!("{e}"))?
+        } else {
+            format!("http://127.0.0.1:{}/mcp?group_id={}", mcp_port, group_id)
+        };
 
         let mut map = self.entries.lock().unwrap();
         map.insert(

@@ -5,12 +5,17 @@
  * agents (persist until deleted); each has "Abrir terminal" (opens its terminal
  * on demand, colored + named after the agent) and a delete button. "+ Criar
  * agente" opens the CreateAgentModal — creating an agent only saves it.
+ *
+ * Below the label bar a thin "lanes" bar shows one chip per git worktree found
+ * in the repo. Clicking a chip selects that worktree as the active raia; new
+ * terminals will run with cwd = that worktree. "+ Worktree" creates a new one.
  */
-import { memo, useRef, useState, useCallback } from "react";
+import { memo, useRef, useState, useCallback, useEffect } from "react";
 import { NodeProps } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   GroupNodeData,
+  Worktree,
   AgentDef,
   nextAgentColor,
   useCanvasStore,
@@ -26,6 +31,8 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const updateNodeLabel = useCanvasStore((s) => s.updateNodeLabel);
   const addTerminalNode = useCanvasStore((s) => s.addTerminalNode);
   const removeAgentDef = useCanvasStore((s) => s.removeAgentDef);
+  const setGroupWorktrees = useCanvasStore((s) => s.setGroupWorktrees);
+  const setActiveWorktree = useCanvasStore((s) => s.setActiveWorktree);
   const nodes = useCanvasStore((s) => s.nodes);
   const usageByNode = useCanvasStore((s) => s.usageByNode);
 
@@ -42,6 +49,49 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const labelRef = useRef<HTMLSpanElement>(null);
 
   const agents = data.agents ?? [];
+  const worktrees = data.worktrees ?? [];
+  // Synthetic root lane always present even if git returned nothing.
+  const rootLane: Worktree = { path: data.cwd, branch: "root", is_root: true };
+  const lanes: Worktree[] = worktrees.length > 0 ? worktrees : [rootLane];
+  const activeWorktree = data.activeWorktree ?? data.cwd;
+
+  // Load worktrees on mount (or when the group's cwd changes).
+  useEffect(() => {
+    let cancelled = false;
+    invoke<Worktree[]>("list_worktrees", { cwd: data.cwd })
+      .then((list) => {
+        if (cancelled) return;
+        if (list.length > 0) {
+          setGroupWorktrees(id, list);
+        }
+      })
+      .catch(() => {
+        // Not a git repo or git not installed — leave lanes empty (root only).
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, data.cwd, setGroupWorktrees]);
+
+  const handleCreateWorktree = useCallback(async () => {
+    const name = window.prompt("Nome da worktree (ex: feature-x):");
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    try {
+      await invoke<Worktree>("create_worktree", {
+        cwd: data.cwd,
+        name: trimmed,
+        branch: trimmed,
+        newBranch: true,
+      });
+      // Re-fetch to include the new worktree
+      const updated = await invoke<Worktree[]>("list_worktrees", { cwd: data.cwd });
+      setGroupWorktrees(id, updated);
+      setActiveWorktree(id, `${data.cwd}/.claude/worktrees/${trimmed}`);
+    } catch (err) {
+      window.alert(`Erro ao criar worktree: ${String(err)}`);
+    }
+  }, [id, data.cwd, setGroupWorktrees, setActiveWorktree]);
 
   const handleDoubleClick = useCallback(() => {
     setEditing(true);
@@ -81,12 +131,14 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const openTerminal = useCallback(
     async (agent: AgentDef) => {
       try {
-        // Wire MCP for the agent's backend and get its launch command+args
-        // (role baked in as a system prompt by create_group, not positional).
+        // Use the active worktree raia as the working directory.
+        // create_group writes .mcp.json into wtPath (WT-04) and returns the
+        // launch command+args for the chosen backend.
+        const wtPath = data.activeWorktree ?? data.cwd;
         const sessionId = crypto.randomUUID();
         const spawn = await invoke<ParentSpawn>("create_group", {
           groupId: id,
-          cwd: data.cwd,
+          cwd: wtPath,
           backend: agent.model,
           prompt: agent.prompt || null,
           sessionId,
@@ -94,23 +146,25 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         const nodeId = addTerminalNode(
           id,
           null,
-          data.cwd,
+          wtPath,
           spawn.command,
           [
             ["TURBO_GROUP_ID", id],
             ["TURBO_MCP_DEPTH", "0"],
             ["TURBO_AGENT", agent.model],
+            ["TURBO_WORKTREE_CWD", wtPath],
           ],
           spawn.args,
           agent.color,
           sessionId,
+          wtPath,
         );
         updateNodeLabel(nodeId, agent.name);
       } catch (err) {
         console.error("[Turbo] open terminal failed:", err);
       }
     },
-    [id, data.cwd, addTerminalNode, updateNodeLabel]
+    [id, data.cwd, data.activeWorktree, addTerminalNode, updateNodeLabel]
   );
 
   const cwdDisplay = data.cwd ? data.cwd.replace(/^\/home\/[^/]+/, "~") : "";
@@ -133,6 +187,35 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           {cwdDisplay}
         </span>
       </div>
+      {/* Worktree lanes bar — one chip per git worktree, nodrag so clicks don't pan */}
+      <div className="group-frame__lanes nodrag">
+        {lanes.map((wt) => (
+          <button
+            key={wt.path}
+            type="button"
+            className={`group-frame__lane${wt.path === activeWorktree ? " is-active" : ""}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveWorktree(id, wt.path);
+            }}
+            title={wt.path}
+          >
+            {wt.branch}
+          </button>
+        ))}
+        <button
+          type="button"
+          className="group-frame__lane-add"
+          onClick={(e) => {
+            e.stopPropagation();
+            void handleCreateWorktree();
+          }}
+          title="Criar nova worktree"
+        >
+          + Worktree
+        </button>
+      </div>
+
       <div className="group-frame__body" />
 
       <aside className="group-frame__sidebar nodrag">

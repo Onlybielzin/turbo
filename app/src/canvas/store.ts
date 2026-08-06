@@ -41,6 +41,8 @@ export interface TerminalNodeData extends Record<string, unknown> {
   color?: string;
   /** Pinned Claude session id — used to read this terminal's token/cost usage. */
   sessionId?: string;
+  /** Absolute path of the git worktree this terminal runs inside. */
+  worktree?: string;
 }
 
 /** Token + estimated cost usage for a terminal (from the Rust session_usage cmd). */
@@ -64,12 +66,23 @@ export interface AgentDef {
   color: string;
 }
 
+/** One git worktree listed for a group. Mirrors `Worktree` from worktrees.rs. */
+export interface Worktree {
+  path: string;
+  branch: string;
+  is_root: boolean;
+}
+
 /** Extra data carried by a GroupFrame node */
 export interface GroupNodeData extends Record<string, unknown> {
   label: string;
   cwd: string;
   /** Saved agents of this project (shown in the right side menu). */
   agents?: AgentDef[];
+  /** Detected git worktrees for this group (populated by GroupFrame on mount). */
+  worktrees?: Worktree[];
+  /** Path of the currently selected worktree raia; absent = repo root. */
+  activeWorktree?: string;
 }
 
 export type AppNode = Node<TerminalNodeData | GroupNodeData>;
@@ -158,7 +171,11 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string) => string;
+  /** Cache detected git worktrees for a group (populated by GroupFrame on mount). */
+  setGroupWorktrees: (groupId: string, list: Worktree[]) => void;
+  /** Set the active worktree raia for a group. */
+  setActiveWorktree: (groupId: string, path: string) => void;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -412,7 +429,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -447,6 +464,7 @@ export const useCanvasStore = create<CanvasState>()(
         env,
         color,
         sessionId,
+        worktree,
       } as TerminalNodeData,
       style: {
         width: 780,
@@ -456,6 +474,26 @@ export const useCanvasStore = create<CanvasState>()(
 
     set({ nodes: fitGroups([...nodes, terminalNode]) });
     return nodeId;
+  },
+
+  setGroupWorktrees: (groupId: string, list: Worktree[]): void => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId) return n;
+        const data = n.data as GroupNodeData;
+        return { ...n, data: { ...data, worktrees: list } };
+      }),
+    }));
+  },
+
+  setActiveWorktree: (groupId: string, path: string): void => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId) return n;
+        const data = n.data as GroupNodeData;
+        return { ...n, data: { ...data, activeWorktree: path } };
+      }),
+    }));
   },
 
   addAgentDef: (groupId: string, def: AgentDef): void => {
