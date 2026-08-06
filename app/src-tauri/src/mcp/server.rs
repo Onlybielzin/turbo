@@ -54,6 +54,18 @@ pub struct NodeCreatedPayload {
     pub label: String,
 }
 
+/// Payload for the `agent_created` event — the orchestrator saved an agent into
+/// the project's side menu (via the create_agent tool). The frontend adds it as
+/// an AgentDef; `color` is chosen frontend-side when absent.
+#[derive(Clone, serde::Serialize)]
+pub struct AgentCreatedPayload {
+    pub group_id: String,
+    pub name: String,
+    pub model: String,
+    pub prompt: String,
+    pub color: Option<String>,
+}
+
 // ─── MCP server handler ───────────────────────────────────────────────────────
 
 #[derive(Clone)]
@@ -97,6 +109,23 @@ pub struct SpawnParams {
     pub prompt: String,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct CreateAgentParams {
+    /// Project id the agent belongs to — pass your own TURBO_GROUP_ID.
+    #[serde(default)]
+    pub group_id: String,
+    /// Display name of the agent (e.g. "Backend").
+    pub name: String,
+    /// Backend/model token: "codex", "opus", "sonnet", "haiku", or "fable".
+    pub model: String,
+    /// Optional role / system prompt for the agent.
+    #[serde(default)]
+    pub prompt: String,
+    /// Optional accent color (hex like "#6ea8fe"); the UI picks one if empty.
+    #[serde(default)]
+    pub color: String,
+}
+
 #[tool_router(server_handler)]
 impl SpawnServer {
     pub fn new(depth_limit: u32, pty_manager: Arc<PtyManager>, app: AppHandle) -> Self {
@@ -106,6 +135,43 @@ impl SpawnServer {
             app,
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Create (save) an agent in the project's side menu. Does NOT run it — the
+    /// user opens its terminal from the menu. Use this to add team members.
+    #[tool(
+        name = "create_agent",
+        description = "Create and SAVE an agent in the project's side menu so the user can open its \
+            terminal. Use this to add team members (e.g. a backend agent on opus, a frontend agent \
+            on sonnet). Pass group_id (your TURBO_GROUP_ID), name, model (opus|sonnet|haiku|fable|codex) \
+            and an optional prompt/role. This does not start the agent — the user opens it."
+    )]
+    async fn create_agent(
+        &self,
+        Parameters(p): Parameters<CreateAgentParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let color = if p.color.trim().is_empty() {
+            None
+        } else {
+            Some(p.color.clone())
+        };
+        let payload = AgentCreatedPayload {
+            group_id: p.group_id.clone(),
+            name: p.name.clone(),
+            model: p.model.clone(),
+            prompt: p.prompt.clone(),
+            color,
+        };
+        if let Err(e) = self.app.emit("agent_created", payload) {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "failed to create agent: {e}"
+            ))]));
+        }
+        tracing::info!(name = %p.name, model = %p.model, group_id = %p.group_id, "create_agent");
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+            "agent '{}' ({}) saved to the project side menu — the user can open its terminal there",
+            p.name, p.model
+        ))]))
     }
 
     /// Spawn a child claude agent in a PTY, emit a canvas `node_created` event,

@@ -27,7 +27,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
-import { useCanvasStore, GroupNodeData } from "./store";
+import { useCanvasStore, GroupNodeData, nextAgentColor } from "./store";
 import { TerminalNode } from "./TerminalNode";
 import { GroupFrame } from "./GroupFrame";
 import { Toolbar } from "./Toolbar";
@@ -59,6 +59,15 @@ interface NodeCreatedPayload {
   label: string;
 }
 
+/** Payload from Rust `agent_created` event (must match AgentCreatedPayload). */
+interface AgentCreatedPayload {
+  group_id: string;
+  name: string;
+  model: string;
+  prompt: string;
+  color: string | null;
+}
+
 function CanvasInner() {
   const {
     nodes,
@@ -67,6 +76,7 @@ function CanvasInner() {
     onEdgesChange,
     onConnect,
     addChildNode,
+    addAgentDef,
     normalizeGroups,
     resolveGroupOverlap,
   } = useCanvasStore();
@@ -94,8 +104,27 @@ function CanvasInner() {
       });
     });
 
+    // Listen for `agent_created` — the orchestrator saved an agent via the
+    // create_agent tool; add it to the group's side menu (pick a color if none).
+    const unlistenAgent = listen<AgentCreatedPayload>("agent_created", (event) => {
+      const { group_id, name, model, prompt, color } = event.payload;
+      const state = useCanvasStore.getState();
+      const group = state.nodes.find((n) => n.id === group_id && n.type === "group");
+      const used = ((group?.data as { agents?: { color: string }[] })?.agents ?? []).map(
+        (a) => a.color
+      );
+      addAgentDef(group_id, {
+        id: crypto.randomUUID(),
+        name,
+        model,
+        prompt: prompt ?? "",
+        color: color || nextAgentColor(used),
+      });
+    });
+
     return () => {
       void unlisten.then((f) => f());
+      void unlistenAgent.then((f) => f());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
