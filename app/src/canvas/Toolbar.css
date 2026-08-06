@@ -31,6 +31,44 @@
   opacity: 0.85;
 }
 
+/* CLI availability status (Claude Code / Codex) */
+.canvas-toolbar__status {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 28px;
+  padding: 0 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.canvas-toolbar__cli {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.canvas-toolbar__cli-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ff6b6b;
+  box-shadow: 0 0 5px rgba(255, 107, 107, 0.6);
+}
+
+.canvas-toolbar__cli.is-on {
+  color: var(--text);
+}
+
+.canvas-toolbar__cli.is-on .canvas-toolbar__cli-dot {
+  background: #51cf66;
+  box-shadow: 0 0 6px rgba(81, 207, 102, 0.7);
+}
+
 .canvas-toolbar__agent {
   display: flex;
   align-items: center;

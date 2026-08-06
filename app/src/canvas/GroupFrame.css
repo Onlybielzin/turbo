@@ -191,6 +191,46 @@
   background: var(--border);
 }
 
+.group-frame__level {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.group-frame__level-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.group-frame__level-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent, #6ea8fe);
+  border: 1px solid var(--accent, #6ea8fe);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.group-frame__level-caption {
+  font-size: 10px;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  color: var(--muted);
+}
+
+.group-frame__level-bar {
+  height: 5px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.group-frame__level-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent, #6ea8fe), #63e6be);
+  transition: width 300ms ease;
+}
+
 .group-frame__total {
   display: flex;
   align-items: center;

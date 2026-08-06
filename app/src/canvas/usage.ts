@@ -7,6 +7,29 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
+/** Cumulative token thresholds for the 10 group levels (index 0 = level 1). */
+const LEVEL_THRESHOLDS = [
+  0, 100_000, 300_000, 900_000, 2_700_000, 8_000_000, 24_000_000, 72_000_000,
+  216_000_000, 650_000_000,
+];
+
+/** Group level (1..10) by total tokens spent, plus progress to the next level. */
+export function groupLevel(tokens: number): {
+  level: number;
+  progress: number;
+  nextAt: number | null;
+} {
+  let level = 1;
+  for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
+    if (tokens >= LEVEL_THRESHOLDS[i]) level = i + 1;
+  }
+  if (level >= 10) return { level: 10, progress: 1, nextAt: null };
+  const cur = LEVEL_THRESHOLDS[level - 1];
+  const next = LEVEL_THRESHOLDS[level];
+  const progress = Math.min(1, Math.max(0, (tokens - cur) / (next - cur)));
+  return { level, progress, nextAt: next };
+}
+
 /** USD cost with adaptive precision. */
 export function formatCost(usd: number): string {
   if (usd === 0) return "$0";

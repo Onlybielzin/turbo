@@ -269,6 +269,30 @@ fn session_usage(session_id: String) -> usage::UsageReport {
     usage::session_usage(&session_id)
 }
 
+/// Whether the `claude` and `codex` CLIs are available on this machine (present
+/// on the app's PATH). Shown in the top menu so the user knows what's usable.
+#[derive(serde::Serialize)]
+pub struct CliStatus {
+    claude: bool,
+    codex: bool,
+}
+
+/// Search PATH for an executable file named `bin`.
+fn which(bin: &str) -> bool {
+    let Some(paths) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
+}
+
+#[tauri::command]
+fn cli_status() -> CliStatus {
+    CliStatus {
+        claude: which("claude"),
+        codex: which("codex"),
+    }
+}
+
 // ─── App entry point ──────────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -313,7 +337,8 @@ pub fn run() {
             pty_resize,
             pty_kill,
             create_group,
-            session_usage
+            session_usage,
+            cli_status
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

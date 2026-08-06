@@ -16,7 +16,7 @@ import {
   useCanvasStore,
 } from "./store";
 import { CreateAgentModal } from "./CreateAgentModal";
-import { sumUsage, formatTokens, formatCost } from "./usage";
+import { sumUsage, formatTokens, formatCost, groupLevel } from "./usage";
 import "./GroupFrame.css";
 
 type GroupFrameProps = NodeProps & { data: GroupNodeData };
@@ -140,6 +140,28 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           <span className="group-frame__sidebar-title">Agentes</span>
           <span className="group-frame__sidebar-count">{agents.length}</span>
         </div>
+
+        {(() => {
+          const lvl = groupLevel(groupTotal.total_tokens);
+          return (
+            <div className="group-frame__level" title="Nível do projeto — sobe conforme o grupo gasta tokens">
+              <div className="group-frame__level-row">
+                <span className="group-frame__level-badge">Nv {lvl.level}</span>
+                <span className="group-frame__level-caption">
+                  {lvl.nextAt
+                    ? `${formatTokens(groupTotal.total_tokens)} / ${formatTokens(lvl.nextAt)} tok`
+                    : "máx"}
+                </span>
+              </div>
+              <div className="group-frame__level-bar">
+                <div
+                  className="group-frame__level-fill"
+                  style={{ width: `${Math.round(lvl.progress * 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })()}
         <div className="group-frame__roster">
           {agents.length === 0 ? (
             <p className="group-frame__empty">Nenhum agente ainda.</p>

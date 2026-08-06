@@ -1,19 +1,40 @@
 /**
  * Toolbar — Fixed overlay anchored top-left of the canvas viewport.
  *
- * "Novo grupo" creates the project (group) and SAVES an orchestrator agent into
- * it (chosen model + optional role prompt) — it does NOT open a terminal. All
- * agents live in the group's right side menu, where each is opened on demand.
+ * Creates an EMPTY project (group) — agents are created only inside a group,
+ * from its right side menu. Also shows which agent CLIs (Claude Code / Codex)
+ * are available on this machine.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useCanvasStore, AGENT_OPTIONS, AGENT_COLORS } from "./store";
+import { invoke } from "@tauri-apps/api/core";
+import { useCanvasStore } from "./store";
 import "./Toolbar.css";
 
+type CliStatus = { claude: boolean; codex: boolean };
+
 export function Toolbar() {
-  const { addGroup, addAgentDef } = useCanvasStore();
-  const [model, setModel] = useState("fable");
-  const [prompt, setPrompt] = useState("");
+  const addGroup = useCanvasStore((s) => s.addGroup);
+  const [status, setStatus] = useState<CliStatus>({ claude: false, codex: false });
+
+  // Poll CLI availability so the top menu reflects what's usable.
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      try {
+        const s = await invoke<CliStatus>("cli_status");
+        if (alive) setStatus(s);
+      } catch {
+        // ignore
+      }
+    };
+    void check();
+    const t = setInterval(() => void check(), 10000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, []);
 
   const handleNewGroup = useCallback(async () => {
     const selected = await open({
@@ -22,45 +43,21 @@ export function Toolbar() {
       title: "Escolher pasta do grupo",
     });
     if (!selected || typeof selected !== "string") return;
-
-    const cwd = selected;
-    const groupId = addGroup(cwd);
-
-    // Save the orchestrator agent into the new project (no terminal yet).
-    addAgentDef(groupId, {
-      id: crypto.randomUUID(),
-      name: "Orquestrador",
-      model,
-      prompt: prompt.trim(),
-      color: AGENT_COLORS[0],
-    });
-  }, [addGroup, addAgentDef, model, prompt]);
+    addGroup(selected);
+  }, [addGroup]);
 
   return (
     <div className="canvas-toolbar">
-      <label className="canvas-toolbar__agent">
-        <span className="canvas-toolbar__agent-label">Orquestrador</span>
-        <select
-          className="canvas-toolbar__select"
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          aria-label="Modelo do agente orquestrador"
-        >
-          {AGENT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <input
-        className="canvas-toolbar__prompt"
-        type="text"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Papel do orquestrador (system prompt, opcional)"
-        title="Papel/instruções do orquestrador — vira o system prompt"
-      />
+      <div className="canvas-toolbar__status" title="CLIs de agente disponíveis nesta máquina">
+        <span className={`canvas-toolbar__cli${status.claude ? " is-on" : ""}`}>
+          <span className="canvas-toolbar__cli-dot" />
+          Claude Code
+        </span>
+        <span className={`canvas-toolbar__cli${status.codex ? " is-on" : ""}`}>
+          <span className="canvas-toolbar__cli-dot" />
+          Codex
+        </span>
+      </div>
       <button
         type="button"
         className="canvas-toolbar__btn"
