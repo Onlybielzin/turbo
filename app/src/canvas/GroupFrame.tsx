@@ -6,9 +6,10 @@
  * on demand, colored + named after the agent) and a delete button. "+ Criar
  * agente" opens the CreateAgentModal — creating an agent only saves it.
  *
- * Below the label bar a thin "lanes" bar shows one chip per git worktree found
- * in the repo. Clicking a chip selects that worktree as the active raia; new
- * terminals will run with cwd = that worktree. "+ Worktree" creates a new one.
+ * Below the label bar (only on the repo/root group) a thin "lanes" bar shows one
+ * chip per git worktree found in the repo. Clicking a chip opens (or focuses) a
+ * dedicated subgroup frame for that worktree — a sibling group whose cwd is the
+ * worktree path, so its terminals run there. "+ Worktree" creates a new one.
  */
 import { memo, useRef, useState, useCallback, useEffect } from "react";
 import { NodeProps } from "@xyflow/react";
@@ -32,7 +33,7 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const addTerminalNode = useCanvasStore((s) => s.addTerminalNode);
   const removeAgentDef = useCanvasStore((s) => s.removeAgentDef);
   const setGroupWorktrees = useCanvasStore((s) => s.setGroupWorktrees);
-  const setActiveWorktree = useCanvasStore((s) => s.setActiveWorktree);
+  const openWorktreeGroup = useCanvasStore((s) => s.openWorktreeGroup);
   const nodes = useCanvasStore((s) => s.nodes);
   const usageByNode = useCanvasStore((s) => s.usageByNode);
 
@@ -53,7 +54,14 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   // Synthetic root lane always present even if git returned nothing.
   const rootLane: Worktree = { path: data.cwd, branch: "root", is_root: true };
   const lanes: Worktree[] = worktrees.length > 0 ? worktrees : [rootLane];
-  const activeWorktree = data.activeWorktree ?? data.cwd;
+  // A worktree subgroup doesn't show the lanes bar — it IS one worktree.
+  const isWorktreeGroup = Boolean(data.worktreeOf);
+  // Which worktree paths already have an open group frame (for chip highlight).
+  const openCwds = new Set(
+    nodes
+      .filter((n) => n.type === "group")
+      .map((n) => (n.data as GroupNodeData).cwd)
+  );
 
   // Load worktrees on mount (or when the group's cwd changes).
   useEffect(() => {
@@ -84,14 +92,16 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         branch: trimmed,
         newBranch: true,
       });
-      // Re-fetch to include the new worktree
+      // Re-fetch to include the new worktree, then open its subgroup frame.
       const updated = await invoke<Worktree[]>("list_worktrees", { cwd: data.cwd });
       setGroupWorktrees(id, updated);
-      setActiveWorktree(id, `${data.cwd}/.claude/worktrees/${trimmed}`);
+      const newPath = `${data.cwd}/.claude/worktrees/${trimmed}`;
+      const created = updated.find((w) => w.path === newPath);
+      openWorktreeGroup(id, created ?? { path: newPath, branch: trimmed, is_root: false });
     } catch (err) {
       window.alert(`Erro ao criar worktree: ${String(err)}`);
     }
-  }, [id, data.cwd, setGroupWorktrees, setActiveWorktree]);
+  }, [id, data.cwd, setGroupWorktrees, openWorktreeGroup]);
 
   const handleDoubleClick = useCallback(() => {
     setEditing(true);
@@ -187,34 +197,39 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           {cwdDisplay}
         </span>
       </div>
-      {/* Worktree lanes bar — one chip per git worktree, nodrag so clicks don't pan */}
-      <div className="group-frame__lanes nodrag">
-        {lanes.map((wt) => (
+      {/* Worktree lanes bar — one chip per git worktree, nodrag so clicks don't pan.
+          Only on the repo/root group; a worktree subgroup doesn't show it. */}
+      {!isWorktreeGroup && (
+        <div className="group-frame__lanes nodrag">
+          {lanes.map((wt) => (
+            <button
+              key={wt.path}
+              type="button"
+              className={`group-frame__lane${openCwds.has(wt.path) ? " is-active" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Opens (or focuses) the subgroup frame for this worktree.
+                // For the root worktree this resolves to this very group (no-op).
+                openWorktreeGroup(id, wt);
+              }}
+              title={wt.path}
+            >
+              {wt.branch}
+            </button>
+          ))}
           <button
-            key={wt.path}
             type="button"
-            className={`group-frame__lane${wt.path === activeWorktree ? " is-active" : ""}`}
+            className="group-frame__lane-add"
             onClick={(e) => {
               e.stopPropagation();
-              setActiveWorktree(id, wt.path);
+              void handleCreateWorktree();
             }}
-            title={wt.path}
+            title="Criar nova worktree"
           >
-            {wt.branch}
+            + Worktree
           </button>
-        ))}
-        <button
-          type="button"
-          className="group-frame__lane-add"
-          onClick={(e) => {
-            e.stopPropagation();
-            void handleCreateWorktree();
-          }}
-          title="Criar nova worktree"
-        >
-          + Worktree
-        </button>
-      </div>
+        </div>
+      )}
 
       <div className="group-frame__body" />
 

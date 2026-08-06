@@ -83,6 +83,10 @@ export interface GroupNodeData extends Record<string, unknown> {
   worktrees?: Worktree[];
   /** Path of the currently selected worktree raia; absent = repo root. */
   activeWorktree?: string;
+  /** If set, this group IS a worktree subgroup of the given repo group id. */
+  worktreeOf?: string;
+  /** Branch name of the worktree this subgroup represents (when worktreeOf set). */
+  worktreeBranch?: string;
 }
 
 export type AppNode = Node<TerminalNodeData | GroupNodeData>;
@@ -176,6 +180,10 @@ interface CanvasState {
   setGroupWorktrees: (groupId: string, list: Worktree[]) => void;
   /** Set the active worktree raia for a group. */
   setActiveWorktree: (groupId: string, path: string) => void;
+  /** Open (or focus) a sibling group frame dedicated to `worktree` — its cwd is
+   *  the worktree path, so create_group writes .mcp.json there and its terminals
+   *  run in that worktree. Deduped by cwd. Returns the subgroup node id. */
+  openWorktreeGroup: (parentGroupId: string, worktree: Worktree) => string;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -426,6 +434,42 @@ export const useCanvasStore = create<CanvasState>()(
       groupCounter: n,
     });
 
+    return groupId;
+  },
+
+  openWorktreeGroup: (parentGroupId: string, worktree: Worktree): string => {
+    const { nodes } = get();
+    // Dedup: a group already dedicated to this worktree path — just focus it.
+    const existing = nodes.find(
+      (n) => n.type === "group" && (n.data as GroupNodeData).cwd === worktree.path
+    );
+    if (existing) return existing.id;
+
+    const parent = nodes.find((n) => n.id === parentGroupId);
+    const parentData = parent?.data as GroupNodeData | undefined;
+    const baseLabel = parentData?.label ?? "Grupo";
+    const psize = parent ? nodeSize(parent) : { w: 1120, h: 780 };
+    const px = parent?.position.x ?? 80;
+    const py = parent?.position.y ?? 80;
+
+    const groupId = `group-${Date.now()}`;
+    const groupNode: AppNode = {
+      id: groupId,
+      type: "group",
+      // Place to the right of the repo group; pushGroupOut resolves overlaps.
+      position: { x: px + psize.w + 80, y: py },
+      data: {
+        label: `${baseLabel} · ${worktree.branch}`,
+        cwd: worktree.path,
+        worktreeOf: parentGroupId,
+        worktreeBranch: worktree.branch,
+        // Inherit the repo group's saved agents so the same team is openable here.
+        agents: parentData?.agents ? [...parentData.agents] : undefined,
+      } as GroupNodeData,
+      style: { width: 1120, height: 780 },
+    };
+
+    set({ nodes: pushGroupOut([...nodes, groupNode], groupId) });
     return groupId;
   },
 
