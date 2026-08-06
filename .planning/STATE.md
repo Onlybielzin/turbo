@@ -35,6 +35,12 @@ Last activity: 2026-08-05 — Phase 4 execution complete
 
 Progress: [██████████] 100%
 
+## Quick Tasks Completed
+
+| ID | Task | Date | Status |
+|----|------|------|--------|
+| 260806-g39 | Suporte a múltiplas git worktrees por grupo (raias no GroupFrame, cwd roteado por worktree, .mcp.json por worktree, spawn_agent herda worktree do pai) | 2026-08-06 | complete ✓ |
+
 ## Performance Metrics
 
 **Velocity:**
