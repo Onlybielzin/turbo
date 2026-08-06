@@ -89,7 +89,15 @@ export interface GroupNodeData extends Record<string, unknown> {
   worktreeBranch?: string;
 }
 
-export type AppNode = Node<TerminalNodeData | GroupNodeData>;
+/** Extra data carried by a ViewerNode (file content viewer). */
+export interface ViewerNodeData extends Record<string, unknown> {
+  label: string;
+  groupId: string;
+  filePath: string;
+  cwd: string;
+}
+
+export type AppNode = Node<TerminalNodeData | GroupNodeData | ViewerNodeData>;
 
 /** Agent backends selectable per agent. `value` is the token sent to Rust
  *  (create_group / spawn_agent): "codex", or a Claude model alias. */
@@ -194,6 +202,9 @@ interface CanvasState {
     childPtyId: string | null;
   }) => string;
   removeNode: (nodeId: string) => void;
+  /** Open (or focus) a ViewerNode for a file inside a group. Deduped by groupId+filePath.
+   *  Returns the viewer node id. */
+  addViewerNode: (groupId: string, filePath: string, cwd: string) => string;
   /** Save a new agent definition into a project (persists until removed). */
   addAgentDef: (groupId: string, def: AgentDef) => void;
   /** Remove a saved agent from a project. */
@@ -641,6 +652,52 @@ export const useCanvasStore = create<CanvasState>()(
         (e) => !toRemove.has(e.source) && !toRemove.has(e.target)
       ),
     });
+  },
+
+  addViewerNode: (groupId: string, filePath: string, cwd: string): string => {
+    const { nodes } = get();
+
+    // Dedup: if a viewer for this group+file already exists, return its id.
+    const existing = nodes.find(
+      (n) =>
+        n.type === "viewer" &&
+        (n.data as ViewerNodeData).groupId === groupId &&
+        (n.data as ViewerNodeData).filePath === filePath
+    );
+    if (existing) return existing.id;
+
+    const nodeId = `viewer-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Positioning: to the right of terminals, stacked vertically per viewer count.
+    const innerPad = 32;
+    const labelBarH = 28;
+    const viewerWidth = 520;
+    const viewerHeight = 540;
+    const viewerX = innerPad + 800; // to the right of the 780-wide terminal column
+
+    const existingViewers = nodes.filter(
+      (n) => n.type === "viewer" && n.parentId === groupId
+    );
+    const viewerY =
+      labelBarH + innerPad + existingViewers.length * (viewerHeight + innerPad);
+
+    // Extract basename from filePath (works for both / and \ separators).
+    const label = filePath.replace(/\\/g, "/").split("/").pop() ?? filePath;
+
+    const viewerNode: AppNode = {
+      id: nodeId,
+      type: "viewer",
+      parentId: groupId,
+      position: { x: viewerX, y: viewerY },
+      data: { label, groupId, filePath, cwd } as ViewerNodeData,
+      style: {
+        width: viewerWidth,
+        height: viewerHeight,
+      },
+    };
+
+    set({ nodes: fitGroups([...nodes, viewerNode]) });
+    return nodeId;
   },
 
   updateNodeStatus: (nodeId: string, status: NodeStatus) => {

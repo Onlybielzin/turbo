@@ -18,12 +18,21 @@ import { formatTokens, formatCost } from "./usage";
 import "@xterm/xterm/css/xterm.css";
 import "./TerminalNode.css";
 
+/** One changed file as reported by git_changes. */
+interface Change {
+  path: string;
+  status: string;
+  staged: boolean;
+}
+
+const MAX_CHIPS = 8;
+
 type TerminalNodeProps = NodeProps & { data: TerminalNodeData };
 
 function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const nodeRef = useRef<HTMLDivElement>(null);
-  const { removeNode, updateNodeStatus, setPtyId, normalizeGroups, setNodeUsage } =
+  const { removeNode, updateNodeStatus, setPtyId, normalizeGroups, setNodeUsage, addViewerNode, nodes } =
     useCanvasStore();
 
   const status: NodeStatus = data.status ?? "running";
@@ -31,6 +40,28 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   const sessionId = data.sessionId;
 
   const [usage, setUsage] = useState<UsageReport | null>(null);
+  const [changes, setChanges] = useState<Change[]>([]);
+
+  // Poll git changes in the cwd every 3 seconds to surface artifact chips.
+  useEffect(() => {
+    if (!data.cwd) return;
+    let alive = true;
+    const poll = async () => {
+      try {
+        const result = await invoke<Change[]>("git_changes", { cwd: data.cwd });
+        if (alive) setChanges(result);
+      } catch {
+        // Not a git repo or other error — silently ignore.
+        if (alive) setChanges([]);
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 3000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [data.cwd]);
 
   // Poll this terminal's token/cost usage from its pinned Claude session.
   useEffect(() => {
@@ -97,6 +128,17 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     deactivateWebGL();
   }, [deactivateWebGL]);
 
+  // Handle chip click: find the group this terminal belongs to and open a viewer.
+  const handleChipClick = useCallback(
+    (change: Change) => {
+      // The parentId of this terminal node is the group id.
+      const parentId = nodes.find((n) => n.id === id)?.parentId;
+      if (!parentId || !data.cwd) return;
+      addViewerNode(parentId, change.path, data.cwd);
+    },
+    [id, nodes, data.cwd, addViewerNode]
+  );
+
   return (
     <div
       ref={nodeRef}
@@ -148,6 +190,35 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
           ×
         </button>
       </div>
+      {changes.length > 0 && (
+        <div className="terminal-node__artifacts nodrag">
+          {changes.slice(0, MAX_CHIPS).map((change) => {
+            const basename = change.path.replace(/\\/g, "/").split("/").pop() ?? change.path;
+            const statusCls =
+              change.status === "A" || change.status === "?"
+                ? "terminal-node__chip--new"
+                : change.status === "D"
+                ? "terminal-node__chip--del"
+                : "terminal-node__chip--mod";
+            return (
+              <button
+                key={change.path}
+                type="button"
+                className={`terminal-node__chip ${statusCls}`}
+                title={`${change.path} [${change.status}]`}
+                onClick={() => handleChipClick(change)}
+              >
+                {basename}
+              </button>
+            );
+          })}
+          {changes.length > MAX_CHIPS && (
+            <span className="terminal-node__chip-overflow">
+              +{changes.length - MAX_CHIPS}
+            </span>
+          )}
+        </div>
+      )}
       <div
         ref={hostRef}
         className="terminal-node__body nodrag nowheel nopan"

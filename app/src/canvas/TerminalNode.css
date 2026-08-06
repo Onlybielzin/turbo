@@ -142,6 +142,77 @@
   opacity: 0.8;
 }
 
+/* Artifact chip bar — shown between header and body when git changes exist. */
+.terminal-node__artifacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px 10px;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--node-border);
+  flex-shrink: 0;
+}
+
+.terminal-node__chip {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  cursor: pointer;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity 100ms ease, filter 100ms ease;
+}
+
+.terminal-node__chip:hover {
+  filter: brightness(1.2);
+}
+
+.terminal-node__chip:active {
+  opacity: 0.8;
+}
+
+/* Modified file — warm amber */
+.terminal-node__chip--mod {
+  background: rgba(255, 169, 77, 0.18);
+  border-color: rgba(255, 169, 77, 0.45);
+  color: #ffa94d;
+}
+
+/* Added / untracked file — teal */
+.terminal-node__chip--new {
+  background: rgba(99, 230, 160, 0.15);
+  border-color: rgba(99, 230, 160, 0.4);
+  color: #63e6a0;
+}
+
+/* Deleted file — muted red */
+.terminal-node__chip--del {
+  background: rgba(255, 135, 135, 0.15);
+  border-color: rgba(255, 135, 135, 0.4);
+  color: #ff8787;
+}
+
+.terminal-node__chip-overflow {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
 /* Body: xterm fills flush; clips to the bottom rounded corners. */
 .terminal-node__body {
   flex: 1;

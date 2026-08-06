@@ -5,6 +5,7 @@
 // created; `.mcp.json` is written ONLY after the health-check (D-02 contract).
 
 mod agent;
+mod artifacts;
 mod groups;
 mod mcp;
 mod usage;
@@ -343,6 +344,8 @@ pub fn run() {
             worktrees::list_worktrees,
             worktrees::create_worktree,
             worktrees::ensure_worktree_mcp,
+            artifacts::git_changes,
+            artifacts::git_file_view,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

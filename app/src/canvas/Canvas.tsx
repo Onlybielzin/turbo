@@ -30,12 +30,14 @@ import "./canvas.css";
 import { useCanvasStore, GroupNodeData, nextAgentColor } from "./store";
 import { TerminalNode } from "./TerminalNode";
 import { GroupFrame } from "./GroupFrame";
+import { ViewerNode } from "./ViewerNode";
 import { Toolbar } from "./Toolbar";
 import { GroupTabs } from "./GroupTabs";
 
 const nodeTypes: NodeTypes = {
   terminal: TerminalNode,
   group: GroupFrame,
+  viewer: ViewerNode,
 };
 
 const defaultEdgeOptions: DefaultEdgeOptions = {
