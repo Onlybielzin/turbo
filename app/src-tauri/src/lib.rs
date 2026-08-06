@@ -241,6 +241,7 @@ async fn create_group(
     group_id: String,
     cwd: String,
     backend: Option<String>,
+    prompt: Option<String>,
 ) -> Result<ParentSpawn, String> {
     let cwd_path = Path::new(&cwd);
     let backend = AgentBackend::parse(backend.as_deref().unwrap_or(""));
@@ -253,7 +254,7 @@ async fn create_group(
         .register(&group_id, cwd_path, mcp_state.port, &backend)
         .map_err(|e| format!("failed to register group: {e}"))?;
 
-    let (command, args) = backend.parent_command(&mcp_url);
+    let (command, args) = backend.parent_command(&mcp_url, prompt.as_deref());
     Ok(ParentSpawn { command, args })
 }
 

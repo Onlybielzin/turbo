@@ -90,6 +90,11 @@ pub struct SpawnParams {
     /// on Opus.
     #[serde(default)]
     pub agent: String,
+    /// Optional ROLE / system prompt for the child (injected as
+    /// --append-system-prompt for Claude, -c developer_instructions for Codex).
+    /// The child's actual TASK is `task` (the one-shot user message).
+    #[serde(default)]
+    pub prompt: String,
 }
 
 #[tool_router(server_handler)]
@@ -160,7 +165,12 @@ impl SpawnServer {
 
         // Build the child command from the requested backend (claude/model or codex).
         let backend = AgentBackend::parse(&p.agent);
-        let (command, args) = backend.child_command(&p.task);
+        let role = if p.prompt.trim().is_empty() {
+            None
+        } else {
+            Some(p.prompt.as_str())
+        };
+        let (command, args) = backend.child_command(&p.task, role);
 
         // Pass depth+1 explicitly so the child's spawn_agent calls include correct depth,
         // and propagate the agent token so a child that itself orchestrates knows its kind.

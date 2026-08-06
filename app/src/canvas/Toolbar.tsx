@@ -50,16 +50,15 @@ export function Toolbar() {
         groupId,
         cwd,
         backend,
+        prompt: prompt.trim() || null,
       });
 
       // Remember the group's default agent so "+ Agente" inside the group
       // pre-selects it (members store the base args, without this prompt).
       setGroupAgent(groupId, backend, spawn.command, spawn.args);
 
-      // A custom prompt is passed as the interactive CLI's positional [PROMPT].
-      const args = prompt.trim() ? [...spawn.args, prompt.trim()] : spawn.args;
-
-      // 3. Add the orchestrator TerminalNode with the computed command/args + env.
+      // 3. Add the orchestrator TerminalNode. The prompt/role is already baked
+      //    into spawn.args as a system prompt by create_group (not positional).
       addTerminalNode(
         groupId,
         null,
@@ -70,7 +69,7 @@ export function Toolbar() {
           ["TURBO_MCP_DEPTH", "0"],
           ["TURBO_AGENT", backend],
         ],
-        args,
+        spawn.args,
       );
     } catch (err) {
       console.error("[Turbo] create_group failed:", err);

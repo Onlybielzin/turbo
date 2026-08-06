@@ -48,8 +48,11 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
         groupId,
         cwd,
         backend: model,
+        prompt: prompt.trim() || null,
       });
-      const args = prompt.trim() ? [...spawn.args, prompt.trim()] : spawn.args;
+      // The prompt/role is baked into spawn.args as a system prompt by
+      // create_group (--append-system-prompt / -c developer_instructions),
+      // NOT as a positional first message.
       const nodeId = addTerminalNode(
         groupId,
         null,
@@ -60,7 +63,7 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
           ["TURBO_MCP_DEPTH", "0"],
           ["TURBO_AGENT", model],
         ],
-        args,
+        spawn.args,
       );
       if (name.trim()) updateNodeLabel(nodeId, name.trim());
       onClose();
