@@ -76,13 +76,24 @@ impl AgentBackend {
     ///
     /// `mcp_url` wires the embedded MCP server (Claude via the `.mcp.json` file,
     /// Codex via inline `-c`). `role` becomes the agent's system prompt.
-    pub fn parent_command(&self, mcp_url: &str, role: Option<&str>) -> (String, Vec<String>) {
+    /// `session_id` (Claude only) pins the transcript file so token/cost usage
+    /// can be read back per terminal; Codex ignores it.
+    pub fn parent_command(
+        &self,
+        mcp_url: &str,
+        role: Option<&str>,
+        session_id: Option<&str>,
+    ) -> (String, Vec<String>) {
         let mut args = match self {
             AgentBackend::Claude { model } => {
                 let mut a = Vec::new();
                 if let Some(m) = model {
                     a.push("--model".to_string());
                     a.push(m.clone());
+                }
+                if let Some(sid) = session_id.filter(|s| !s.is_empty()) {
+                    a.push("--session-id".to_string());
+                    a.push(sid.to_string());
                 }
                 a
             }
@@ -156,7 +167,7 @@ mod tests {
     #[test]
     fn codex_parent_wires_mcp_inline() {
         let (_cmd, args) =
-            AgentBackend::Codex.parent_command("http://127.0.0.1:9/mcp?group_id=g", None);
+            AgentBackend::Codex.parent_command("http://127.0.0.1:9/mcp?group_id=g", None, None);
         assert_eq!(args[0], "-c");
         assert!(args[1].contains("mcp_servers.turbo.url="));
         assert!(args[1].contains("group_id=g"));
@@ -165,7 +176,7 @@ mod tests {
     #[test]
     fn claude_model_flows_to_both_commands() {
         let b = AgentBackend::parse("opus");
-        let (_c, pargs) = b.parent_command("unused", None);
+        let (_c, pargs) = b.parent_command("unused", None, None);
         assert_eq!(pargs, vec!["--model".to_string(), "opus".to_string()]);
         let (_c2, cargs) = b.child_command("t", None);
         assert!(cargs.contains(&"--model".to_string()) && cargs.contains(&"opus".to_string()));
@@ -184,7 +195,7 @@ mod tests {
 
         // Codex interactive: -c developer_instructions=<role>, no positional prompt.
         let (_c2, a2) =
-            AgentBackend::Codex.parent_command("http://x/mcp", Some("Você é seguranca"));
+            AgentBackend::Codex.parent_command("http://x/mcp", Some("Você é seguranca"), None);
         assert!(a2
             .iter()
             .any(|s| s == "developer_instructions=Você é seguranca"));
@@ -192,7 +203,7 @@ mod tests {
 
     #[test]
     fn empty_role_adds_no_flags() {
-        let (_c, a) = AgentBackend::parse("fable").parent_command("x", Some("   "));
+        let (_c, a) = AgentBackend::parse("fable").parent_command("x", Some("   "), None);
         assert!(!a.contains(&"--append-system-prompt".to_string()));
     }
 }

@@ -7,6 +7,7 @@
 mod agent;
 mod groups;
 mod mcp;
+mod usage;
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
@@ -242,6 +243,7 @@ async fn create_group(
     cwd: String,
     backend: Option<String>,
     prompt: Option<String>,
+    session_id: Option<String>,
 ) -> Result<ParentSpawn, String> {
     let cwd_path = Path::new(&cwd);
     let backend = AgentBackend::parse(backend.as_deref().unwrap_or(""));
@@ -254,8 +256,17 @@ async fn create_group(
         .register(&group_id, cwd_path, mcp_state.port, &backend)
         .map_err(|e| format!("failed to register group: {e}"))?;
 
-    let (command, args) = backend.parent_command(&mcp_url, prompt.as_deref());
+    let (command, args) =
+        backend.parent_command(&mcp_url, prompt.as_deref(), session_id.as_deref());
     Ok(ParentSpawn { command, args })
+}
+
+/// Read token + estimated cost usage for one agent terminal, by its pinned
+/// Claude session id. Returns zeros (found=false) when no transcript exists yet
+/// (e.g. a Codex terminal or a session that hasn't produced output).
+#[tauri::command]
+fn session_usage(session_id: String) -> usage::UsageReport {
+    usage::session_usage(&session_id)
 }
 
 // ─── App entry point ──────────────────────────────────────────────────────────
@@ -301,7 +312,8 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
-            create_group
+            create_group,
+            session_usage
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {

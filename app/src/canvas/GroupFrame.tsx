@@ -16,6 +16,7 @@ import {
   useCanvasStore,
 } from "./store";
 import { CreateAgentModal } from "./CreateAgentModal";
+import { sumUsage, formatTokens, formatCost } from "./usage";
 import "./GroupFrame.css";
 
 type GroupFrameProps = NodeProps & { data: GroupNodeData };
@@ -25,6 +26,16 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const updateNodeLabel = useCanvasStore((s) => s.updateNodeLabel);
   const addTerminalNode = useCanvasStore((s) => s.addTerminalNode);
   const removeAgentDef = useCanvasStore((s) => s.removeAgentDef);
+  const nodes = useCanvasStore((s) => s.nodes);
+  const usageByNode = useCanvasStore((s) => s.usageByNode);
+
+  // Sum token/cost usage across this project's open terminals.
+  const groupTotal = sumUsage(
+    nodes
+      .filter((n) => n.parentId === id && n.type === "terminal")
+      .map((n) => usageByNode[n.id])
+      .filter((u): u is NonNullable<typeof u> => Boolean(u))
+  );
 
   const [editing, setEditing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -72,11 +83,13 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
       try {
         // Wire MCP for the agent's backend and get its launch command+args
         // (role baked in as a system prompt by create_group, not positional).
+        const sessionId = crypto.randomUUID();
         const spawn = await invoke<ParentSpawn>("create_group", {
           groupId: id,
           cwd: data.cwd,
           backend: agent.model,
           prompt: agent.prompt || null,
+          sessionId,
         });
         const nodeId = addTerminalNode(
           id,
@@ -90,6 +103,7 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           ],
           spawn.args,
           agent.color,
+          sessionId,
         );
         updateNodeLabel(nodeId, agent.name);
       } catch (err) {
@@ -169,6 +183,14 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
             ))
           )}
         </div>
+        {groupTotal.total_tokens > 0 && (
+          <div className="group-frame__total" title="Soma de tokens e custo estimado dos terminais abertos deste projeto">
+            <span className="group-frame__total-label">Total</span>
+            <span className="group-frame__total-value">
+              {formatTokens(groupTotal.total_tokens)} tok · {formatCost(groupTotal.cost_usd)}
+            </span>
+          </div>
+        )}
         <button
           type="button"
           className="group-frame__create"

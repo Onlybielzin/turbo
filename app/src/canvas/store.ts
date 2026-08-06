@@ -39,6 +39,19 @@ export interface TerminalNodeData extends Record<string, unknown> {
   env?: [string, string][];
   /** Accent color of the agent this terminal runs (from its AgentDef). */
   color?: string;
+  /** Pinned Claude session id — used to read this terminal's token/cost usage. */
+  sessionId?: string;
+}
+
+/** Token + estimated cost usage for a terminal (from the Rust session_usage cmd). */
+export interface UsageReport {
+  input_tokens: number;
+  output_tokens: number;
+  cache_creation_input_tokens: number;
+  cache_read_input_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  found: boolean;
 }
 
 /** A saved agent belonging to a project (group). Persists until deleted; a
@@ -132,6 +145,10 @@ export const AGENT_PRESETS: AgentPreset[] = [
 interface CanvasState {
   nodes: AppNode[];
   edges: Edge[];
+  /** Live token/cost usage per terminal node id (updated by TerminalNode polls). */
+  usageByNode: Record<string, UsageReport>;
+  /** Store/replace the usage report for a terminal node. */
+  setNodeUsage: (nodeId: string, report: UsageReport) => void;
   groupCounter: number;
 
   // @xyflow handlers
@@ -141,7 +158,7 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string) => string;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -347,6 +364,9 @@ export const useCanvasStore = create<CanvasState>()(
     (set, get) => ({
   nodes: [],
   edges: [],
+  usageByNode: {},
+  setNodeUsage: (nodeId: string, report: UsageReport): void =>
+    set((state) => ({ usageByNode: { ...state.usageByNode, [nodeId]: report } })),
   groupCounter: 0,
 
   onNodesChange: (changes) => {
@@ -392,7 +412,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -426,6 +446,7 @@ export const useCanvasStore = create<CanvasState>()(
         args,
         env,
         color,
+        sessionId,
       } as TerminalNodeData,
       style: {
         width: 780,

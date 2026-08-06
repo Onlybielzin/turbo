@@ -191,6 +191,29 @@
   background: var(--border);
 }
 
+.group-frame__total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.group-frame__total-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.group-frame__total-value {
+  font-size: 12px;
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  color: var(--text);
+}
+
 .group-frame__create {
   height: 30px;
   background: var(--accent, #6ea8fe);
