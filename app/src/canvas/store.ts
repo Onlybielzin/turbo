@@ -37,19 +37,26 @@ export interface TerminalNodeData extends Record<string, unknown> {
   args?: string[];
   /** Extra env vars to inject into the PTY process (e.g. TURBO_GROUP_ID). */
   env?: [string, string][];
+  /** Accent color of the agent this terminal runs (from its AgentDef). */
+  color?: string;
+}
+
+/** A saved agent belonging to a project (group). Persists until deleted; a
+ *  terminal is only opened on demand via its "Abrir terminal" button. */
+export interface AgentDef {
+  id: string;
+  name: string;
+  model: string;
+  prompt: string;
+  color: string;
 }
 
 /** Extra data carried by a GroupFrame node */
 export interface GroupNodeData extends Record<string, unknown> {
   label: string;
   cwd: string;
-  /** The group's agent backend token (fable|opus|sonnet|haiku|codex). Set by
-   *  the Toolbar after create_group; drives "+ Agente" inside the group. */
-  backend?: string;
-  /** Command + args used to launch the group's agent (orchestrator). Reused
-   *  verbatim when adding more agents to the group so MCP wiring matches. */
-  agentCommand?: string;
-  agentArgs?: string[];
+  /** Saved agents of this project (shown in the right side menu). */
+  agents?: AgentDef[];
 }
 
 export type AppNode = Node<TerminalNodeData | GroupNodeData>;
@@ -63,6 +70,23 @@ export const AGENT_OPTIONS: { value: string; label: string }[] = [
   { value: "haiku", label: "Haiku" },
   { value: "codex", label: "Codex" },
 ];
+
+/** Accent colors assignable to agents. New agents pick the next unused one. */
+export const AGENT_COLORS: string[] = [
+  "#6ea8fe", // blue
+  "#63e6be", // teal
+  "#ffa94d", // orange
+  "#da77f2", // purple
+  "#ff8787", // red
+  "#ffd43b", // yellow
+  "#69db7c", // green
+  "#4dabf7", // sky
+];
+
+/** Pick the first palette color not already used by the group's agents. */
+export function nextAgentColor(used: string[]): string {
+  return AGENT_COLORS.find((c) => !used.includes(c)) ?? AGENT_COLORS[used.length % AGENT_COLORS.length];
+}
 
 /** A ready-made agent: role name + backend model + starter prompt. Clicking a
  *  preset in the create-agent modal pre-fills the form (still editable). */
@@ -117,7 +141,7 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[]) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string) => string;
   /** Add a child TerminalNode spawned by a parent agent (MCP spawn_agent call).
    *  Places it in a radial fan around the parent, adds a parent→child edge.
    *  Returns the new child node id. */
@@ -128,9 +152,10 @@ interface CanvasState {
     childPtyId: string | null;
   }) => string;
   removeNode: (nodeId: string) => void;
-  /** Stash the group's agent backend + launch command so "+ Agente" can spawn
-   *  more terminals on the same backend with matching MCP wiring. */
-  setGroupAgent: (groupId: string, backend: string, command: string, args: string[]) => void;
+  /** Save a new agent definition into a project (persists until removed). */
+  addAgentDef: (groupId: string, def: AgentDef) => void;
+  /** Remove a saved agent from a project. */
+  removeAgentDef: (groupId: string, agentId: string) => void;
   updateNodeStatus: (nodeId: string, status: NodeStatus) => void;
   updateNodeLabel: (nodeId: string, label: string) => void;
   setPtyId: (nodeId: string, ptyId: number) => void;
@@ -367,7 +392,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[]): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -400,6 +425,7 @@ export const useCanvasStore = create<CanvasState>()(
         command,
         args,
         env,
+        color,
       } as TerminalNodeData,
       style: {
         width: 780,
@@ -411,13 +437,26 @@ export const useCanvasStore = create<CanvasState>()(
     return nodeId;
   },
 
-  setGroupAgent: (groupId: string, backend: string, command: string, args: string[]): void => {
+  addAgentDef: (groupId: string, def: AgentDef): void => {
     set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === groupId
-          ? { ...n, data: { ...n.data, backend, agentCommand: command, agentArgs: args } }
-          : n
-      ),
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId) return n;
+        const data = n.data as GroupNodeData;
+        return { ...n, data: { ...data, agents: [...(data.agents ?? []), def] } };
+      }),
+    }));
+  },
+
+  removeAgentDef: (groupId: string, agentId: string): void => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId) return n;
+        const data = n.data as GroupNodeData;
+        return {
+          ...n,
+          data: { ...data, agents: (data.agents ?? []).filter((a) => a.id !== agentId) },
+        };
+      }),
     }));
   },
 

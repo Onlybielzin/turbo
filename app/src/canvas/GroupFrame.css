@@ -113,12 +113,26 @@
 .group-frame__agent-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   padding: 7px 9px;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.group-frame__agent-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.group-frame__agent-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
 }
 
 .group-frame__agent-name {
@@ -130,14 +144,51 @@
 }
 
 .group-frame__agent-badge {
-  font-size: 10px;
+  align-self: flex-start;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--muted);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 1px 7px;
+  padding: 0 6px;
+}
+
+.group-frame__agent-open {
   flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms;
+}
+
+.group-frame__agent-open:hover {
+  background: var(--border);
+  border-color: var(--text);
+}
+
+.group-frame__agent-del {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: color 100ms, background 100ms;
+}
+
+.group-frame__agent-del:hover {
+  color: #ff8787;
+  background: var(--border);
 }
 
 .group-frame__create {

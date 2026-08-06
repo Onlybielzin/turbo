@@ -81,6 +81,28 @@
   line-height: 1;
 }
 
+/* Agent-colored terminal: border + header tint + glowing name dot */
+.terminal-node--agent {
+  border-color: var(--agent-color);
+  box-shadow: 0 0 0 1px var(--agent-color);
+}
+
+.terminal-node--agent .terminal-node__header {
+  background: linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--agent-color) 48%, var(--panel)),
+    var(--panel)
+  );
+}
+
+.terminal-node__agent-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px var(--agent-color);
+}
+
 /* Kill button: 24×24px tap target */
 .terminal-node__kill {
   display: flex;

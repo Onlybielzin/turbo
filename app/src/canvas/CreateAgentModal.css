@@ -204,6 +204,31 @@
   line-height: 1.5;
 }
 
+.agent-modal__swatches {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agent-modal__swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 100ms, border-color 100ms;
+}
+
+.agent-modal__swatch:hover {
+  transform: scale(1.12);
+}
+
+.agent-modal__swatch.is-active {
+  border-color: var(--text);
+  box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px currentColor;
+}
+
 .agent-modal__actions {
   display: flex;
   justify-content: flex-end;

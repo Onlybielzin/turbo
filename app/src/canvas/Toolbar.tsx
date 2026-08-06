@@ -1,82 +1,40 @@
 /**
  * Toolbar — Fixed overlay anchored top-left of the canvas viewport.
  *
- * Design contract: 03-UI-SPEC.md
- *
- * "Novo grupo" flow (per-agent backend):
- *   1. Create the GroupFrame node immediately (canvas feedback).
- *   2. Await `create_group` — registers the group, wires the embedded MCP server
- *      (writes `.mcp.json` for Claude, or returns the inline URL for Codex) and
- *      returns the parent terminal's command+args for the chosen backend.
- *   3. Create the parent TerminalNode with that command+args and the group env
- *      (TURBO_GROUP_ID / TURBO_MCP_DEPTH / TURBO_AGENT). usePty spawns it AFTER
- *      steps 1-2 complete — D-02 ordering guaranteed.
- *
- * The agent picker is the "create agents per group" area: choose which
- * CLI/model runs the group's orchestrator (Fable, Opus, Sonnet, Haiku, Codex).
+ * "Novo grupo" creates the project (group) and SAVES an orchestrator agent into
+ * it (chosen model + optional role prompt) — it does NOT open a terminal. All
+ * agents live in the group's right side menu, where each is opened on demand.
  */
 import { useCallback, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
-import { useCanvasStore, AGENT_OPTIONS } from "./store";
+import { useCanvasStore, AGENT_OPTIONS, AGENT_COLORS } from "./store";
 import "./Toolbar.css";
 
-/** Command + args the backend computes for a group's parent terminal. */
-type ParentSpawn = { command: string; args: string[] };
-
 export function Toolbar() {
-  const { addGroup, addTerminalNode, setGroupAgent } = useCanvasStore();
-  const [backend, setBackend] = useState("fable");
+  const { addGroup, addAgentDef } = useCanvasStore();
+  const [model, setModel] = useState("fable");
   const [prompt, setPrompt] = useState("");
 
   const handleNewGroup = useCallback(async () => {
-    // Open native directory picker
     const selected = await open({
       directory: true,
       multiple: false,
       title: "Escolher pasta do grupo",
     });
-
     if (!selected || typeof selected !== "string") return;
 
     const cwd = selected;
-
-    // 1. Create the group frame immediately for visual feedback.
     const groupId = addGroup(cwd);
 
-    try {
-      // 2. Register group + wire MCP; get the parent command+args for `backend`.
-      const spawn = await invoke<ParentSpawn>("create_group", {
-        groupId,
-        cwd,
-        backend,
-        prompt: prompt.trim() || null,
-      });
-
-      // Remember the group's default agent so "+ Agente" inside the group
-      // pre-selects it (members store the base args, without this prompt).
-      setGroupAgent(groupId, backend, spawn.command, spawn.args);
-
-      // 3. Add the orchestrator TerminalNode. The prompt/role is already baked
-      //    into spawn.args as a system prompt by create_group (not positional).
-      addTerminalNode(
-        groupId,
-        null,
-        cwd,
-        spawn.command,
-        [
-          ["TURBO_GROUP_ID", groupId],
-          ["TURBO_MCP_DEPTH", "0"],
-          ["TURBO_AGENT", backend],
-        ],
-        spawn.args,
-      );
-    } catch (err) {
-      console.error("[Turbo] create_group failed:", err);
-      // Fallback: open a shell so the user still has a terminal.
-      addTerminalNode(groupId, null, cwd, undefined);
-    }
-  }, [addGroup, addTerminalNode, setGroupAgent, backend, prompt]);
+    // Save the orchestrator agent into the new project (no terminal yet).
+    addAgentDef(groupId, {
+      id: crypto.randomUUID(),
+      name: "Orquestrador",
+      model,
+      prompt: prompt.trim(),
+      color: AGENT_COLORS[0],
+    });
+  }, [addGroup, addAgentDef, model, prompt]);
 
   return (
     <div className="canvas-toolbar">
@@ -84,8 +42,8 @@ export function Toolbar() {
         <span className="canvas-toolbar__agent-label">Orquestrador</span>
         <select
           className="canvas-toolbar__select"
-          value={backend}
-          onChange={(e) => setBackend(e.target.value)}
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
           aria-label="Modelo do agente orquestrador"
         >
           {AGENT_OPTIONS.map((o) => (
@@ -100,8 +58,8 @@ export function Toolbar() {
         type="text"
         value={prompt}
         onChange={(e) => setPrompt(e.target.value)}
-        placeholder="Prompt do orquestrador (opcional)"
-        title="Prompt inicial / papel do orquestrador"
+        placeholder="Papel do orquestrador (system prompt, opcional)"
+        title="Papel/instruções do orquestrador — vira o system prompt"
       />
       <button
         type="button"

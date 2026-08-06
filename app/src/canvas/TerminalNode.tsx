@@ -25,6 +25,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     useCanvasStore();
 
   const status: NodeStatus = data.status ?? "running";
+  const color = data.color;
 
   const handleStatusChange = useCallback(
     (s: NodeStatus) => updateNodeStatus(id, s),
@@ -72,7 +73,10 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   return (
     <div
       ref={nodeRef}
-      className={`terminal-node${selected ? " terminal-node--selected" : ""}`}
+      className={`terminal-node${selected ? " terminal-node--selected" : ""}${
+        color ? " terminal-node--agent" : ""
+      }`}
+      style={color ? ({ ["--agent-color"]: color } as React.CSSProperties) : undefined}
       onFocus={handleFocus}
       onBlur={handleBlur}
     >
@@ -86,10 +90,18 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
         onResizeEnd={() => normalizeGroups()}
       />
       <div className="terminal-node__header" data-drag-handle>
-        <span
-          className={`terminal-node__status-dot terminal-node__status-dot--${status}`}
-          aria-label={statusLabel(status)}
-        />
+        {color ? (
+          <span
+            className="terminal-node__agent-dot"
+            style={{ background: color }}
+            aria-hidden
+          />
+        ) : (
+          <span
+            className={`terminal-node__status-dot terminal-node__status-dot--${status}`}
+            aria-label={statusLabel(status)}
+          />
+        )}
         <span className="terminal-node__label">{data.label ?? "Terminal"}</span>
         <button
           type="button"

@@ -1,37 +1,34 @@
 /**
- * CreateAgentModal — modal to add an agent to a project (group).
+ * CreateAgentModal — modal to SAVE an agent into a project (group).
  *
- * Offers ready-made presets (role + model + prompt) plus a custom form (name,
- * model, prompt). On create it wires MCP for the chosen backend via the
- * `create_group` Tauri command (writes `.mcp.json` for Claude, returns the
- * inline URL for Codex), then spawns the agent terminal in the group with the
- * prompt as the interactive CLI's positional [PROMPT].
+ * Creating an agent only stores its definition (name, model, prompt/role,
+ * color) — it does NOT open a terminal. The agent then appears in the group's
+ * right side menu, where an "Abrir terminal" button launches its terminal on
+ * demand. Offers ready-made presets plus a custom form and a color picker.
  */
 import { useState, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
 import {
   AGENT_OPTIONS,
   AGENT_PRESETS,
+  AGENT_COLORS,
   AgentPreset,
   useCanvasStore,
 } from "./store";
 import "./CreateAgentModal.css";
 
-type ParentSpawn = { command: string; args: string[] };
-
 interface CreateAgentModalProps {
   groupId: string;
-  cwd: string;
+  defaultColor: string;
   onClose: () => void;
 }
 
-export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProps) {
-  const { addTerminalNode, updateNodeLabel } = useCanvasStore();
+export function CreateAgentModal({ groupId, defaultColor, onClose }: CreateAgentModalProps) {
+  const addAgentDef = useCanvasStore((s) => s.addAgentDef);
   const [name, setName] = useState("");
   const [model, setModel] = useState("fable");
   const [prompt, setPrompt] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [color, setColor] = useState(defaultColor);
 
   const applyPreset = useCallback((p: AgentPreset) => {
     setName(p.name);
@@ -39,39 +36,17 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
     setPrompt(p.prompt);
   }, []);
 
-  const handleCreate = useCallback(async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      // Wire MCP for THIS agent's backend and get its launch command+args.
-      const spawn = await invoke<ParentSpawn>("create_group", {
-        groupId,
-        cwd,
-        backend: model,
-        prompt: prompt.trim() || null,
-      });
-      // The prompt/role is baked into spawn.args as a system prompt by
-      // create_group (--append-system-prompt / -c developer_instructions),
-      // NOT as a positional first message.
-      const nodeId = addTerminalNode(
-        groupId,
-        null,
-        cwd,
-        spawn.command,
-        [
-          ["TURBO_GROUP_ID", groupId],
-          ["TURBO_MCP_DEPTH", "0"],
-          ["TURBO_AGENT", model],
-        ],
-        spawn.args,
-      );
-      if (name.trim()) updateNodeLabel(nodeId, name.trim());
-      onClose();
-    } catch (err) {
-      console.error("[Turbo] create agent failed:", err);
-      setBusy(false);
-    }
-  }, [busy, groupId, cwd, model, prompt, name, addTerminalNode, updateNodeLabel, onClose]);
+  const handleCreate = useCallback(() => {
+    const trimmedName = name.trim() || `Agente ${model}`;
+    addAgentDef(groupId, {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      model,
+      prompt: prompt.trim(),
+      color,
+    });
+    onClose();
+  }, [groupId, name, model, prompt, color, addAgentDef, onClose]);
 
   return createPortal(
     <div className="agent-modal__backdrop" onClick={onClose}>
@@ -132,13 +107,29 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
             </select>
           </label>
 
+          <div className="agent-modal__field agent-modal__field--full">
+            <span>Cor</span>
+            <div className="agent-modal__swatches">
+              {AGENT_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`agent-modal__swatch${color === c ? " is-active" : ""}`}
+                  style={{ background: c }}
+                  onClick={() => setColor(c)}
+                  aria-label={`Cor ${c}`}
+                />
+              ))}
+            </div>
+          </div>
+
           <label className="agent-modal__field agent-modal__field--full">
-            <span>Prompt</span>
+            <span>Prompt / papel (system prompt)</span>
             <textarea
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={4}
-              placeholder="Papel / instruções iniciais do agente (opcional)"
+              placeholder="Papel do agente — vira o system prompt, não a primeira mensagem (opcional)"
             />
           </label>
         </div>
@@ -151,9 +142,8 @@ export function CreateAgentModal({ groupId, cwd, onClose }: CreateAgentModalProp
             type="button"
             className="agent-modal__btn agent-modal__btn--primary"
             onClick={handleCreate}
-            disabled={busy}
           >
-            {busy ? "Criando…" : "Criar agente"}
+            Salvar agente
           </button>
         </div>
       </div>
