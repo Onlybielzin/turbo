@@ -86,7 +86,8 @@ impl AgentBackend {
     ) -> (String, Vec<String>) {
         let mut args = match self {
             AgentBackend::Claude { model } => {
-                let mut a = Vec::new();
+                // Bypass permission prompts so the chat is usable unattended.
+                let mut a = vec!["--dangerously-skip-permissions".to_string()];
                 if let Some(m) = model {
                     a.push("--model".to_string());
                     a.push(m.clone());
@@ -98,6 +99,7 @@ impl AgentBackend {
                 a
             }
             AgentBackend::Codex => vec![
+                "--dangerously-bypass-approvals-and-sandbox".to_string(),
                 "-c".to_string(),
                 format!("mcp_servers.turbo.url=\"{mcp_url}\""),
             ],
@@ -168,16 +170,19 @@ mod tests {
     fn codex_parent_wires_mcp_inline() {
         let (_cmd, args) =
             AgentBackend::Codex.parent_command("http://127.0.0.1:9/mcp?group_id=g", None, None);
-        assert_eq!(args[0], "-c");
-        assert!(args[1].contains("mcp_servers.turbo.url="));
-        assert!(args[1].contains("group_id=g"));
+        assert!(args.contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
+        assert!(args.iter().any(|a| a == "-c"));
+        assert!(args
+            .iter()
+            .any(|a| a.contains("mcp_servers.turbo.url=") && a.contains("group_id=g")));
     }
 
     #[test]
     fn claude_model_flows_to_both_commands() {
         let b = AgentBackend::parse("opus");
         let (_c, pargs) = b.parent_command("unused", None, None);
-        assert_eq!(pargs, vec!["--model".to_string(), "opus".to_string()]);
+        assert!(pargs.contains(&"--model".to_string()) && pargs.contains(&"opus".to_string()));
+        assert!(pargs.contains(&"--dangerously-skip-permissions".to_string()));
         let (_c2, cargs) = b.child_command("t", None);
         assert!(cargs.contains(&"--model".to_string()) && cargs.contains(&"opus".to_string()));
     }
