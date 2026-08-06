@@ -16,6 +16,7 @@ import { NodeProps } from "@xyflow/react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   GroupNodeData,
+  TerminalNodeData,
   Worktree,
   AgentDef,
   nextAgentColor,
@@ -34,6 +35,7 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const removeAgentDef = useCanvasStore((s) => s.removeAgentDef);
   const setGroupWorktrees = useCanvasStore((s) => s.setGroupWorktrees);
   const openWorktreeGroup = useCanvasStore((s) => s.openWorktreeGroup);
+  const removeNode = useCanvasStore((s) => s.removeNode);
   const nodes = useCanvasStore((s) => s.nodes);
   const usageByNode = useCanvasStore((s) => s.usageByNode);
 
@@ -102,6 +104,17 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
       window.alert(`Erro ao criar worktree: ${String(err)}`);
     }
   }, [id, data.cwd, setGroupWorktrees, openWorktreeGroup]);
+
+  // Close a worktree subgroup: kill its terminals' PTYs, then drop the frame.
+  const handleCloseWorktreeGroup = useCallback(() => {
+    for (const n of nodes) {
+      if (n.parentId === id && n.type === "terminal") {
+        const pid = (n.data as TerminalNodeData).ptyId;
+        if (typeof pid === "number") void invoke("pty_kill", { id: pid });
+      }
+    }
+    removeNode(id);
+  }, [id, nodes, removeNode]);
 
   const handleDoubleClick = useCallback(() => {
     setEditing(true);
@@ -196,6 +209,20 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         <span className="group-frame__cwd" title={data.cwd}>
           {cwdDisplay}
         </span>
+        {isWorktreeGroup && (
+          <button
+            type="button"
+            className="group-frame__close nodrag"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleCloseWorktreeGroup();
+            }}
+            title="Fechar subgrupo da worktree (mata os terminais)"
+            aria-label="Fechar subgrupo da worktree"
+          >
+            ✕
+          </button>
+        )}
       </div>
       {/* Worktree lanes bar — one chip per git worktree, nodrag so clicks don't pan.
           Only on the repo/root group; a worktree subgroup doesn't show it. */}

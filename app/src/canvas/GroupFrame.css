@@ -55,6 +55,30 @@
   line-height: 1;
 }
 
+/* Close button — only on worktree subgroups; kills terminals + drops the frame */
+.group-frame__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+
+.group-frame__close:hover {
+  background: var(--brand-a, #ff8787);
+  color: #fff;
+}
+
 /* Agents side menu — docked inside the group's right gutter (reserved by
  * SIDEBAR_RESERVE in the store's group auto-fit). Full height under the label bar. */
 .group-frame__sidebar {
