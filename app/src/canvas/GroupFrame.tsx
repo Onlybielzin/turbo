@@ -64,6 +64,8 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
 
   const [editing, setEditing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  // When set, the create-agent modal opens in edit mode for this agent.
+  const [editingAgent, setEditingAgent] = useState<AgentDef | null>(null);
   const [levelUpTo, setLevelUpTo] = useState<number | null>(null);
   const prevLevelRef = useRef(lvl.level);
   const labelRef = useRef<HTMLSpanElement>(null);
@@ -349,6 +351,18 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
                 </button>
                 <button
                   type="button"
+                  className="group-frame__agent-edit"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditingAgent(a);
+                  }}
+                  title="Editar instruções do agente"
+                  aria-label="Editar agente"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
                   className="group-frame__agent-del"
                   onClick={(e) => {
                     e.stopPropagation();
@@ -388,6 +402,15 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           groupId={id}
           defaultColor={nextAgentColor(agents.map((a) => a.color))}
           onClose={() => setModalOpen(false)}
+        />
+      )}
+
+      {editingAgent && (
+        <CreateAgentModal
+          groupId={id}
+          defaultColor={editingAgent.color}
+          agent={editingAgent}
+          onClose={() => setEditingAgent(null)}
         />
       )}
     </div>

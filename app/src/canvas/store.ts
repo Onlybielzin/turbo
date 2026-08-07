@@ -207,6 +207,8 @@ interface CanvasState {
   addViewerNode: (groupId: string, filePath: string, cwd: string) => string;
   /** Save a new agent definition into a project (persists until removed). */
   addAgentDef: (groupId: string, def: AgentDef) => void;
+  /** Update a saved agent's definition (name, model, prompt, color) in place. */
+  updateAgentDef: (groupId: string, def: AgentDef) => void;
   /** Remove a saved agent from a project. */
   removeAgentDef: (groupId: string, agentId: string) => void;
   updateNodeStatus: (nodeId: string, status: NodeStatus) => void;
@@ -557,6 +559,22 @@ export const useCanvasStore = create<CanvasState>()(
         if (n.id !== groupId) return n;
         const data = n.data as GroupNodeData;
         return { ...n, data: { ...data, agents: [...(data.agents ?? []), def] } };
+      }),
+    }));
+  },
+
+  updateAgentDef: (groupId: string, def: AgentDef): void => {
+    set((state) => ({
+      nodes: state.nodes.map((n) => {
+        if (n.id !== groupId) return n;
+        const data = n.data as GroupNodeData;
+        return {
+          ...n,
+          data: {
+            ...data,
+            agents: (data.agents ?? []).map((a) => (a.id === def.id ? def : a)),
+          },
+        };
       }),
     }));
   },
