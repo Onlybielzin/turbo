@@ -12,6 +12,7 @@
 //! `price_for` if Anthropic pricing changes. Codex has no equivalent pinnable
 //! transcript, so its terminals report zero here for now.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -45,11 +46,13 @@ struct Price {
 fn price_for(model: &str) -> Price {
     let m = model.to_ascii_lowercase();
     if m.contains("opus") {
+        // Opus 4.x / 5 official rates (per 1M): $5 in, $25 out.
+        // cache write 5m = 1.25x input, cache read = 0.1x input.
         Price {
-            input: 15.0,
-            output: 75.0,
-            cache_write: 18.75,
-            cache_read: 1.5,
+            input: 5.0,
+            output: 25.0,
+            cache_write: 6.25,
+            cache_read: 0.5,
         }
     } else if m.contains("sonnet") {
         Price {
@@ -141,6 +144,12 @@ pub fn session_usage(session_id: &str) -> UsageReport {
     }
     report.found = true;
 
+    // Dedupe by (message.id, requestId): Claude Code frequently writes the SAME
+    // assistant response to the transcript more than once (streaming + final, or
+    // duplicated lines). Summing every line double-counts a turn — e.g. a single
+    // "oi" showing ~76k instead of ~38k. Count each unique API response once.
+    let mut seen: HashSet<String> = HashSet::new();
+
     for path in paths {
         let Ok(text) = fs::read_to_string(&path) else {
             continue;
@@ -157,6 +166,12 @@ pub fn session_usage(session_id: &str) -> UsageReport {
             let usage = &msg["usage"];
             if usage.is_null() {
                 continue;
+            }
+            if let Some(id) = msg["id"].as_str() {
+                let req = v["requestId"].as_str().unwrap_or("");
+                if !seen.insert(format!("{id}|{req}")) {
+                    continue;
+                }
             }
             let model = msg["model"].as_str().unwrap_or("");
             let get = |k: &str| usage[k].as_u64().unwrap_or(0);
