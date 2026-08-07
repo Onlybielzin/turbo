@@ -41,12 +41,15 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const nodes = useCanvasStore((s) => s.nodes);
   const usageByNode = useCanvasStore((s) => s.usageByNode);
 
-  // Sum token/cost usage across this project's open terminals.
+  // Group total = usage of currently-open terminals PLUS the persisted cumulative
+  // of terminals that were already closed (data.usageTotal). This keeps the
+  // group's running total fixed — it never drops when a terminal is closed.
+  const openUsage = nodes
+    .filter((n) => n.parentId === id && n.type === "terminal")
+    .map((n) => usageByNode[n.id])
+    .filter((u): u is NonNullable<typeof u> => Boolean(u));
   const groupTotal = sumUsage(
-    nodes
-      .filter((n) => n.parentId === id && n.type === "terminal")
-      .map((n) => usageByNode[n.id])
-      .filter((u): u is NonNullable<typeof u> => Boolean(u))
+    data.usageTotal ? [data.usageTotal, ...openUsage] : openUsage
   );
 
   const lvl = groupLevel(groupTotal.total_tokens);

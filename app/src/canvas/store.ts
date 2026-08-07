@@ -56,6 +56,20 @@ export interface UsageReport {
   found: boolean;
 }
 
+/** Add two usage reports field-by-field (used to accumulate closed terminals). */
+function addUsage(a: UsageReport, b: UsageReport): UsageReport {
+  return {
+    input_tokens: a.input_tokens + b.input_tokens,
+    output_tokens: a.output_tokens + b.output_tokens,
+    cache_creation_input_tokens:
+      a.cache_creation_input_tokens + b.cache_creation_input_tokens,
+    cache_read_input_tokens: a.cache_read_input_tokens + b.cache_read_input_tokens,
+    total_tokens: a.total_tokens + b.total_tokens,
+    cost_usd: a.cost_usd + b.cost_usd,
+    found: a.found || b.found,
+  };
+}
+
 /** A saved agent belonging to a project (group). Persists until deleted; a
  *  terminal is only opened on demand via its "Abrir terminal" button. */
 export interface AgentDef {
@@ -87,6 +101,10 @@ export interface GroupNodeData extends Record<string, unknown> {
   worktreeOf?: string;
   /** Branch name of the worktree this subgroup represents (when worktreeOf set). */
   worktreeBranch?: string;
+  /** Cumulative usage of terminals that were CLOSED — persisted so the group's
+   *  running total never drops when a terminal is removed. The live group total
+   *  is this plus the currently-open terminals' usage. */
+  usageTotal?: UsageReport;
 }
 
 /** Extra data carried by a ViewerNode (file content viewer). */
@@ -656,7 +674,7 @@ export const useCanvasStore = create<CanvasState>()(
   },
 
   removeNode: (nodeId: string) => {
-    const { nodes, edges } = get();
+    const { nodes, edges, usageByNode } = get();
     // Remove the node and any nodes that are children of it
     const toRemove = new Set<string>([nodeId]);
     for (const n of nodes) {
@@ -664,8 +682,35 @@ export const useCanvasStore = create<CanvasState>()(
         toRemove.add(n.id);
       }
     }
+    // Fold each closed terminal's last-known usage into its parent group's
+    // persisted cumulative total, so the group's number stays fixed instead of
+    // dropping when the terminal is removed. Skip groups that are themselves
+    // being removed (closing the whole group discards its total).
+    const fold = new Map<string, UsageReport>();
+    for (const n of nodes) {
+      if (!toRemove.has(n.id) || n.type !== "terminal" || !n.parentId) continue;
+      if (toRemove.has(n.parentId)) continue;
+      const u = usageByNode[n.id];
+      if (!u || !u.found) continue;
+      const acc = fold.get(n.parentId);
+      fold.set(n.parentId, acc ? addUsage(acc, u) : u);
+    }
+    const nextNodes = nodes
+      .filter((n) => !toRemove.has(n.id))
+      .map((n) => {
+        const add = fold.get(n.id);
+        if (!add || n.type !== "group") return n;
+        const data = n.data as GroupNodeData;
+        return {
+          ...n,
+          data: {
+            ...data,
+            usageTotal: data.usageTotal ? addUsage(data.usageTotal, add) : add,
+          },
+        };
+      });
     set({
-      nodes: nodes.filter((n) => !toRemove.has(n.id)),
+      nodes: nextNodes,
       edges: edges.filter(
         (e) => !toRemove.has(e.source) && !toRemove.has(e.target)
       ),
