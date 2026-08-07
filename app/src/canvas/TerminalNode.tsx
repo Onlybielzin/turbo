@@ -42,9 +42,27 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   const [usage, setUsage] = useState<UsageReport | null>(null);
   const [changes, setChanges] = useState<Change[]>([]);
 
-  // Poll git changes in the cwd every 3 seconds to surface artifact chips.
+  // Hibernation: when this node is panned/zoomed off-screen (e.g. you focused
+  // another group), stop it from costing paint + polling. An IntersectionObserver
+  // against the browser viewport flips `inViewport`; off-screen nodes pause both
+  // polls and hide the xterm body via CSS (the PTY stays alive — buffer intact).
+  // rootMargin pre-wakes a node just before it scrolls into view to avoid a flash.
+  const [inViewport, setInViewport] = useState(true);
   useEffect(() => {
-    if (!data.cwd) return;
+    const el = nodeRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => setInViewport(entries[0]?.isIntersecting ?? true),
+      { root: null, rootMargin: "300px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Poll git changes in the cwd every 3 seconds to surface artifact chips.
+  // Paused while the node is hibernated (off-screen).
+  useEffect(() => {
+    if (!data.cwd || !inViewport) return;
     let alive = true;
     const poll = async () => {
       try {
@@ -61,7 +79,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       alive = false;
       clearInterval(timer);
     };
-  }, [data.cwd]);
+  }, [data.cwd, inViewport]);
 
   // Poll this terminal's token/cost usage. Claude terminals read their pinned
   // session transcript; Codex terminals read the newest ~/.codex rollout for
@@ -70,6 +88,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   const cwd = data.cwd;
   useEffect(() => {
     if (isCodex ? !cwd : !sessionId) return;
+    if (!inViewport) return;
     let alive = true;
     const tick = async () => {
       try {
@@ -89,7 +108,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       alive = false;
       clearInterval(timer);
     };
-  }, [isCodex, cwd, sessionId, id, setNodeUsage]);
+  }, [isCodex, cwd, sessionId, id, setNodeUsage, inViewport]);
 
   const handleStatusChange = useCallback(
     (s: NodeStatus) => updateNodeStatus(id, s),
@@ -152,7 +171,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       ref={nodeRef}
       className={`terminal-node${selected ? " terminal-node--selected" : ""}${
         color ? " terminal-node--agent" : ""
-      }`}
+      }${inViewport ? "" : " terminal-node--hibernated"}`}
       style={color ? ({ ["--agent-color"]: color } as React.CSSProperties) : undefined}
       onFocus={handleFocus}
       onBlur={handleBlur}
@@ -232,6 +251,12 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
         className="terminal-node__body nodrag nowheel nopan"
         tabIndex={0}
       />
+      {/* LOD / hibernation placeholder: shown (via CSS) when the node is far out
+          (canvas [data-lod-far]) or off-screen (terminal-node--hibernated). The
+          xterm body is painted-over so the browser skips its heavy DOM paint. */}
+      <div className="terminal-node__lod" aria-hidden="true">
+        <span className="terminal-node__lod-name">{data.label ?? "Terminal"}</span>
+      </div>
     </div>
   );
 }

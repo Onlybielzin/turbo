@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useCanvasStore, GroupNodeData, AppNode } from "./store";
+import { useShortcutsStore, matchBinding } from "./shortcuts";
 import "./GroupTabs.css";
 
 /** Center point of a group node (measured size > style size > default 1120×780). */
@@ -96,8 +97,9 @@ export function GroupTabs() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ctrl+G → auto-grid layout
-      if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === "g" || e.key === "G")) {
+      const { bindings } = useShortcutsStore.getState();
+      // Auto-grid layout (default Ctrl+G)
+      if (matchBinding(e, bindings.autoGrid)) {
         e.preventDefault();
         e.stopPropagation();
         doAutoGrid();
@@ -107,12 +109,12 @@ export function GroupTabs() {
       // (Arrows use Ctrl so a focused terminal still gets plain arrow keys.)
       if (e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
-        const isNext = k === "e" || k === "arrowright";
-        const isPrev = k === "q" || k === "arrowleft";
-        if (isNext || isPrev) {
+        const isNextArrow = k === "e" || k === "arrowright";
+        const isPrevArrow = k === "q" || k === "arrowleft";
+        if (isNextArrow || isPrevArrow) {
           e.preventDefault();
           e.stopPropagation();
-          cycleGroup(isNext ? 1 : -1);
+          cycleGroup(isNextArrow ? 1 : -1);
           return;
         }
         if (k === "arrowup" || k === "arrowdown") {
@@ -122,12 +124,14 @@ export function GroupTabs() {
           return;
         }
       }
-      // Alt+Tab / Alt+Shift+Tab → next / previous group
-      if (e.altKey && e.key === "Tab") {
+      // Next / previous group (configurable — default Alt+Tab / Alt+Shift+Tab)
+      const isNext = matchBinding(e, bindings.nextGroup);
+      const isPrev = matchBinding(e, bindings.prevGroup);
+      if (isNext || isPrev) {
         if (useCanvasStore.getState().nodes.every((n) => n.type !== "group")) return;
         e.preventDefault();
         e.stopPropagation();
-        cycleGroup(e.shiftKey ? -1 : 1);
+        cycleGroup(isNext ? 1 : -1);
         return;
       }
       // Ctrl+1..9 → jump to group N

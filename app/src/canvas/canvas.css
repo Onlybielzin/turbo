@@ -1,5 +1,87 @@
 /* Phase 3: @xyflow/react dark theme overrides */
 
+/* ── Settings gear ────────────────────────────────────────────────────────────
+   Floating top-right button that opens the preferences dialog. */
+.canvas-settings-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--node-border, rgba(255, 255, 255, 0.12));
+  background: rgba(20, 18, 16, 0.82);
+  backdrop-filter: blur(6px);
+  color: var(--muted, #b8b0a8);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.canvas-settings-btn:hover {
+  color: #e6e1dc;
+  border-color: var(--brand-a, #c9433a);
+  transform: rotate(30deg);
+}
+
+/* ── Zoom HUD (LOD calibration) ───────────────────────────────────────────────
+   Bottom-left readout of the current zoom %. The state pill flips between
+   "ao vivo" and "placeholder" at the LOD threshold so you can read the exact
+   zoom at which terminals collapse. */
+.zoom-indicator {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(20, 18, 16, 0.82);
+  border: 1px solid var(--node-border, rgba(255, 255, 255, 0.1));
+  backdrop-filter: blur(6px);
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e6e1dc;
+  pointer-events: none;
+  user-select: none;
+}
+
+.zoom-indicator__pct {
+  min-width: 42px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-indicator__state {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.zoom-indicator__state--live {
+  color: #63e6a0;
+  background: rgba(99, 230, 160, 0.15);
+}
+
+.zoom-indicator__state--lod {
+  color: #ffa94d;
+  background: rgba(255, 169, 77, 0.15);
+}
+
+/* Show only the state matching the current LOD mode. */
+.zoom-indicator__state--lod { display: none; }
+.canvas-area[data-lod-far] .zoom-indicator__state--live { display: none; }
+.canvas-area[data-lod-far] .zoom-indicator__state--lod { display: inline; }
+
 /* Canvas background */
 .react-flow__background {
   background-color: var(--bg);
