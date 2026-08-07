@@ -204,3 +204,128 @@ pub fn session_usage(session_id: &str) -> UsageReport {
         + report.cache_creation_input_tokens;
     report
 }
+
+// ── Codex usage ────────────────────────────────────────────────────────────────
+// Codex (OpenAI CLI) logs to ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl. The
+// first line (type "session_meta") carries `payload.cwd`; per-turn usage lives in
+// `payload.info.last_token_usage` of "token_count" events. We locate the newest
+// rollout whose session cwd matches the terminal's cwd and sum its per-turn deltas
+// (deduping identical events), mirroring ccusage's codex adapter.
+
+/// GPT-5 / Codex price estimate (USD per 1M tokens). Codex has no cost field in
+/// its logs, so this is an ESTIMATE using published GPT-5 API rates.
+const CODEX_INPUT_PRICE: f64 = 1.25;
+const CODEX_CACHED_INPUT_PRICE: f64 = 0.125;
+const CODEX_OUTPUT_PRICE: f64 = 10.0;
+
+/// Recursively collect `rollout-*.jsonl` files under `dir`.
+fn collect_rollouts(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            collect_rollouts(&path, out);
+        } else if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("rollout-") && n.ends_with(".jsonl"))
+            .unwrap_or(false)
+        {
+            out.push(path);
+        }
+    }
+}
+
+/// Newest Codex rollout file whose session_meta cwd matches `cwd`.
+fn find_codex_rollout(cwd: &str) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let sessions = PathBuf::from(home).join(".codex").join("sessions");
+    let mut rollouts = Vec::new();
+    collect_rollouts(&sessions, &mut rollouts);
+
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for path in rollouts {
+        // The cwd is on the first line (session_meta). Read just that line.
+        let Ok(text) = fs::read_to_string(&path) else {
+            continue;
+        };
+        let Some(first) = text.lines().next() else {
+            continue;
+        };
+        let Ok(v) = serde_json::from_str::<Value>(first) else {
+            continue;
+        };
+        let meta_cwd = v["cwd"].as_str().or_else(|| v["payload"]["cwd"].as_str());
+        if meta_cwd != Some(cwd) {
+            continue;
+        }
+        let mtime = path
+            .metadata()
+            .and_then(|m| m.modified())
+            .unwrap_or(std::time::UNIX_EPOCH);
+        if best.as_ref().map(|(t, _)| mtime > *t).unwrap_or(true) {
+            best = Some((mtime, path));
+        }
+    }
+    best.map(|(_, p)| p)
+}
+
+/// Aggregate Codex token usage for the newest session in `cwd`.
+pub fn codex_usage(cwd: &str) -> UsageReport {
+    let mut report = UsageReport::default();
+    let Some(path) = find_codex_rollout(cwd) else {
+        return report;
+    };
+    let Ok(text) = fs::read_to_string(&path) else {
+        return report;
+    };
+    report.found = true;
+
+    // Dedupe identical token_count events (same per-turn counts back-to-back).
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if v["payload"]["type"].as_str() != Some("token_count") {
+            continue;
+        }
+        let last = &v["payload"]["info"]["last_token_usage"];
+        if last.is_null() {
+            continue;
+        }
+        let get = |k: &str| last[k].as_u64().unwrap_or(0);
+        let input = get("input_tokens"); // full input (includes cached)
+        let cached = get("cached_input_tokens");
+        let cache_w = get("cache_write_input_tokens");
+        let output = get("output_tokens") + get("reasoning_output_tokens");
+
+        // Dedupe key: the raw counters of this turn.
+        if !seen.insert(format!("{input}|{cached}|{cache_w}|{output}")) {
+            continue;
+        }
+
+        let uncached = input.saturating_sub(cached);
+        report.input_tokens += uncached;
+        report.cache_read_input_tokens += cached;
+        report.cache_creation_input_tokens += cache_w;
+        report.output_tokens += output;
+
+        report.cost_usd += (uncached as f64 * CODEX_INPUT_PRICE
+            + cached as f64 * CODEX_CACHED_INPUT_PRICE
+            + output as f64 * CODEX_OUTPUT_PRICE)
+            / 1_000_000.0;
+    }
+
+    // Same headline convention as Claude: exclude cache_read.
+    report.total_tokens =
+        report.input_tokens + report.output_tokens + report.cache_creation_input_tokens;
+    report
+}

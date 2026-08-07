@@ -317,9 +317,10 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
               Nv {lvl.level} · {formName(lvl.level)}
             </span>
             <span className="group-frame__level-caption">
+              {formatCost(groupTotal.cost_usd)}
               {lvl.nextAt
-                ? `${formatTokens(groupTotal.total_tokens)} / ${formatTokens(lvl.nextAt)} tok`
-                : "máx"}
+                ? ` · ${formatTokens(groupTotal.total_tokens)}/${formatTokens(lvl.nextAt)}`
+                : " · máx"}
             </span>
           </div>
           <div className="group-frame__level-bar">
@@ -384,11 +385,11 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
             ))
           )}
         </div>
-        {groupTotal.total_tokens > 0 && (
-          <div className="group-frame__total" title="Soma de tokens e custo estimado dos terminais abertos deste projeto">
+        {(groupTotal.total_tokens > 0 || groupTotal.cost_usd > 0) && (
+          <div className="group-frame__total" title="Custo estimado e soma de tokens dos terminais abertos deste projeto">
             <span className="group-frame__total-label">Total</span>
             <span className="group-frame__total-value">
-              {formatTokens(groupTotal.total_tokens)} tok · {formatCost(groupTotal.cost_usd)}
+              {formatCost(groupTotal.cost_usd)} · {formatTokens(groupTotal.total_tokens)} tok
             </span>
           </div>
         )}

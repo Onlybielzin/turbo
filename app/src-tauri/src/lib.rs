@@ -281,6 +281,13 @@ fn session_usage(session_id: String) -> usage::UsageReport {
     usage::session_usage(&session_id)
 }
 
+/// Token/cost usage for a Codex terminal — read from the newest
+/// ~/.codex/sessions/**/rollout-*.jsonl whose session cwd matches `cwd`.
+#[tauri::command]
+fn codex_usage(cwd: String) -> usage::UsageReport {
+    usage::codex_usage(&cwd)
+}
+
 /// Whether the `claude` and `codex` CLIs are available on this machine (present
 /// on the app's PATH). Shown in the top menu so the user knows what's usable.
 #[derive(serde::Serialize)]
@@ -350,6 +357,7 @@ pub fn run() {
             pty_kill,
             create_group,
             session_usage,
+            codex_usage,
             cli_status,
             worktrees::list_worktrees,
             worktrees::create_worktree,

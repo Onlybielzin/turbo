@@ -63,13 +63,19 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     };
   }, [data.cwd]);
 
-  // Poll this terminal's token/cost usage from its pinned Claude session.
+  // Poll this terminal's token/cost usage. Claude terminals read their pinned
+  // session transcript; Codex terminals read the newest ~/.codex rollout for
+  // their cwd (Codex ignores --session-id, so we match by working directory).
+  const isCodex = data.command === "codex";
+  const cwd = data.cwd;
   useEffect(() => {
-    if (!sessionId) return;
+    if (isCodex ? !cwd : !sessionId) return;
     let alive = true;
     const tick = async () => {
       try {
-        const report = await invoke<UsageReport>("session_usage", { sessionId });
+        const report = isCodex
+          ? await invoke<UsageReport>("codex_usage", { cwd })
+          : await invoke<UsageReport>("session_usage", { sessionId });
         if (!alive) return;
         setUsage(report);
         setNodeUsage(id, report);
@@ -83,7 +89,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
       alive = false;
       clearInterval(timer);
     };
-  }, [sessionId, id, setNodeUsage]);
+  }, [isCodex, cwd, sessionId, id, setNodeUsage]);
 
   const handleStatusChange = useCallback(
     (s: NodeStatus) => updateNodeStatus(id, s),
