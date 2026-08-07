@@ -17,6 +17,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   GroupNodeData,
   TerminalNodeData,
+  UsageReport,
   Worktree,
   AgentDef,
   nextAgentColor,
@@ -41,16 +42,32 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
   const nodes = useCanvasStore((s) => s.nodes);
   const usageByNode = useCanvasStore((s) => s.usageByNode);
 
-  // Group total = usage of currently-open terminals PLUS the persisted cumulative
-  // of terminals that were already closed (data.usageTotal). This keeps the
-  // group's running total fixed — it never drops when a terminal is closed.
-  const openUsage = nodes
-    .filter((n) => n.parentId === id && n.type === "terminal")
-    .map((n) => usageByNode[n.id])
-    .filter((u): u is NonNullable<typeof u> => Boolean(u));
-  const groupTotal = sumUsage(
-    data.usageTotal ? [data.usageTotal, ...openUsage] : openUsage
-  );
+  // A group's OWN total = usage of its currently-open terminals PLUS the
+  // persisted cumulative of terminals already closed (usageTotal). This keeps
+  // the running total fixed — it never drops when a terminal is closed.
+  const ownTotalOf = (groupNodeId: string, persisted?: UsageReport) => {
+    const openUsage = nodes
+      .filter((n) => n.parentId === groupNodeId && n.type === "terminal")
+      .map((n) => usageByNode[n.id])
+      .filter((u): u is NonNullable<typeof u> => Boolean(u));
+    return sumUsage(persisted ? [persisted, ...openUsage] : openUsage);
+  };
+
+  // Group total = this group's own usage. The principal (repo root) group ALSO
+  // absorbs the XP earned in its worktree subgroups (groups whose worktreeOf
+  // points back here); each worktree subgroup still keeps its own total.
+  const worktreeSubtotals = data.worktreeOf
+    ? []
+    : nodes
+        .filter(
+          (n) =>
+            n.type === "group" && (n.data as GroupNodeData).worktreeOf === id,
+        )
+        .map((n) => ownTotalOf(n.id, (n.data as GroupNodeData).usageTotal));
+  const groupTotal = sumUsage([
+    ownTotalOf(id, data.usageTotal),
+    ...worktreeSubtotals,
+  ]);
 
   const lvl = groupLevel(groupTotal.total_tokens);
   // Re-render on a 1s tick so WORK/REST tracks live PTY activity.
