@@ -111,3 +111,30 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           # NSIS produz um instalador .exe (Turbo_<versão>_x64-setup.exe).
           args: "--bundles nsis"
+
+  # Avisa no Discord SÓ depois do build no CI (Linux + Windows) ter dado certo.
+  # O resumo para leigos é escrito pela skill /publish em .github/RELEASE_MESSAGE.md
+  # e commitado junto do release; aqui só lemos o arquivo e postamos no webhook.
+  notify-discord:
+    runs-on: ubuntu-22.04
+    needs: [release-linux, release-windows]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Postar resumo do release no Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "Secret DISCORD_WEBHOOK ausente — pulando aviso."
+            exit 0
+          fi
+          if [ ! -f .github/RELEASE_MESSAGE.md ]; then
+            echo ".github/RELEASE_MESSAGE.md ausente — pulando aviso."
+            exit 0
+          fi
+          MSG="$(cat .github/RELEASE_MESSAGE.md)"
+          curl -sS -H "Content-Type: application/json" \
+            -d "$(jq -n --arg c "$MSG" '{content: $c}')" \
+            "$DISCORD_WEBHOOK"

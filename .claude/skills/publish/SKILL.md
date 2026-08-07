@@ -45,31 +45,18 @@ O usuário pode passar: `patch` (default), `minor`, `major`, ou uma versão expl
    - Para manter o `Cargo.lock` coerente, rode dentro de `app/src-tauri`:
      `cargo update -p app 2>/dev/null || true` (atualiza a entrada do lock; se o cargo não estiver disponível, siga — o CI regenera).
 
-5. **Commit + tag + push:**
-   ```bash
-   git add app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml app/src-tauri/Cargo.lock
-   git commit -m "chore(release): v<nova>"
-   git tag v<nova>
-   git push origin main
-   git push origin v<nova>
-   ```
-
-6. **Confirmar o disparo do CI.** Rode `gh run list --workflow release.yml --limit 3` e mostre o link.
-   Informe ao usuário que quando o workflow terminar, os instaladores estarão em:
-   `https://github.com/<owner>/<repo>/releases/tag/v<nova>`
-   (descubra owner/repo com `gh repo view --json nameWithOwner -q .nameWithOwner`).
-
-7. **Avisar no Discord (resumo para leigos).**
-   - Levante o que mudou desde a última versão: pegue a tag anterior com
-     `git describe --tags --abbrev=0 HEAD^` e liste os commits com
+5. **Escrever o resumo para leigos** (o Discord é enviado pelo CI, NÃO aqui).
+   - Levante o que mudou desde a última versão: tag anterior com
+     `git describe --tags --abbrev=0 HEAD^` e commits com
      `git log <tag-anterior>..HEAD --pretty=%s` (ignore os `chore(release): ...`).
-   - Escreva um resumo **para usuários comuns**, em português, descrevendo o que a
-     pessoa vai NOTAR na prática (novidades, correções, melhorias). Regras do texto:
-     - **NÃO** mencione nomes de arquivos, pastas, funções, commits, tags ou termos técnicos.
-     - Fale de benefícios e comportamento visível ("agora dá pra abrir um terminal comum
-       direto no grupo"), não de implementação.
-     - 2 a 5 frases/bullets curtos. Tom leve e claro.
-   - Monte a mensagem e inclua o link de download do release. Sugestão de formato:
+   - Escreva um resumo **para usuários comuns**, em português, do que a pessoa vai
+     NOTAR na prática (novidades, correções, melhorias). Regras do texto:
+     - **NÃO** mencione arquivos, pastas, funções, commits, tags ou termos técnicos.
+     - Fale de benefícios / comportamento visível ("agora dá pra abrir um terminal
+       comum direto no grupo"), não de implementação.
+     - 2 a 5 frases/bullets curtos, tom leve e claro.
+   - Grave o texto em `.github/RELEASE_MESSAGE.md` (sobrescreve o anterior), com
+     título e link de download. Formato sugerido:
      ```
      🚀 **Turbo v<nova> disponível!**
 
@@ -77,19 +64,32 @@ O usuário pode passar: `patch` (default), `minor`, `major`, ou uma versão expl
 
      Baixar: https://github.com/<owner>/<repo>/releases/tag/v<nova>
      ```
-   - Envie ao webhook do Discord via `curl` (o payload é JSON `{"content": "..."}`;
-     use `jq -Rn` para gerar JSON válido a partir do texto, preservando acentos e quebras de linha):
-     ```bash
-     curl -sS -H "Content-Type: application/json" \
-       -d "$(jq -Rn --arg c "$MENSAGEM" '{content: $c}')" \
-       "https://discord.com/api/webhooks/1535400275395874826/PIAHtF333g--V_lvWYYs2o-eKjVOkHoYn7erwF2N1rrH_9i1UgOh6XXRp97C69fg2tSn"
-     ```
-     O CI ainda pode estar buildando — tudo bem, o link já é válido e o instalador aparece quando o build termina.
-   - Se o envio falhar (rede/webhook), avise o usuário mas NÃO desfaça o release — ele já está publicado.
+   - **NÃO** faça `curl` para o Discord daqui. O envio acontece só no CI (job
+     `notify-discord` do `release.yml`), depois que os builds Linux+Windows
+     terminarem com sucesso, lendo esse arquivo. A URL do webhook fica no secret
+     `DISCORD_WEBHOOK` do repositório.
+
+6. **Commit + tag + push** (inclui o arquivo da mensagem):
+   ```bash
+   git add app/package.json app/src-tauri/tauri.conf.json app/src-tauri/Cargo.toml app/src-tauri/Cargo.lock .github/RELEASE_MESSAGE.md
+   git commit -m "chore(release): v<nova>"
+   git tag v<nova>
+   git push origin main
+   git push origin v<nova>
+   ```
+
+7. **Confirmar o disparo do CI.** Rode `gh run list --workflow release.yml --limit 3` e mostre o link.
+   Informe ao usuário que, quando o workflow terminar, os instaladores estarão em
+   `https://github.com/<owner>/<repo>/releases/tag/v<nova>`
+   (owner/repo via `gh repo view --json nameWithOwner -q .nameWithOwner`) e que o
+   aviso no Discord é postado **automaticamente pelo CI** ao final do build — não há
+   nada a enviar manualmente.
 
 ## Observações
 
 - NÃO builde localmente — o build é responsabilidade do CI.
+- O aviso no Discord depende do secret `DISCORD_WEBHOOK` (já configurado no repo). Se
+  ele faltar, o job `notify-discord` apenas pula o envio (não quebra o release).
 - Se qualquer pré-checagem falhar, pare e explique; não force o release.
 - O gate de fatos do projeto (GateGuard) pode pedir confirmação antes de comandos git — apresente
   os fatos pedidos e prossiga.
