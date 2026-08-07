@@ -110,10 +110,10 @@ fn collect_jsonl(dir: &Path, out: &mut Vec<PathBuf>) {
 /// newer directory layout — not just the flat file.
 fn find_transcripts(session_id: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    let Some(home) = std::env::var_os("HOME") else {
+    let Some(home) = crate::platform::home_dir() else {
         return out;
     };
-    let projects = PathBuf::from(home).join(".claude").join("projects");
+    let projects = home.join(".claude").join("projects");
     let flat = format!("{session_id}.jsonl");
     let Ok(rd) = fs::read_dir(&projects) else {
         return out;
@@ -240,8 +240,8 @@ fn collect_rollouts(dir: &Path, out: &mut Vec<PathBuf>) {
 
 /// Newest Codex rollout file whose session_meta cwd matches `cwd`.
 fn find_codex_rollout(cwd: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    let sessions = PathBuf::from(home).join(".codex").join("sessions");
+    let home = crate::platform::home_dir()?;
+    let sessions = home.join(".codex").join("sessions");
     let mut rollouts = Vec::new();
     collect_rollouts(&sessions, &mut rollouts);
 

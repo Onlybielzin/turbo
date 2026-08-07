@@ -8,6 +8,7 @@ mod agent;
 mod artifacts;
 mod groups;
 mod mcp;
+mod platform;
 mod usage;
 mod worktrees;
 
@@ -105,8 +106,7 @@ fn pty_spawn(
     };
     let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
-    let shell = command
-        .unwrap_or_else(|| std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string()));
+    let shell = command.unwrap_or_else(platform::default_shell);
     let mut cmd = CommandBuilder::new(shell);
     if let Some(a) = args {
         cmd.args(a);
@@ -323,10 +323,10 @@ pub struct AgentModelOption {
 /// Empty if the cache is absent/unreadable (the UI keeps the plain "Codex" default).
 #[tauri::command]
 fn codex_models() -> Vec<AgentModelOption> {
-    let Ok(home) = std::env::var("HOME") else {
+    let Some(home) = platform::home_dir() else {
         return Vec::new();
     };
-    let path = Path::new(&home).join(".codex/models_cache.json");
+    let path = home.join(".codex").join("models_cache.json");
     let Ok(text) = std::fs::read_to_string(&path) else {
         return Vec::new();
     };

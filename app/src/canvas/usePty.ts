@@ -191,8 +191,17 @@ export function usePty({
           try {
             ptyId = await spawnPty(command, args);
           } catch (spawnErr) {
-            // If the requested command wasn't found, fall back to the default shell
-            if (command && String(spawnErr).toLowerCase().includes("no such file")) {
+            // If the requested command wasn't found, fall back to the default shell.
+            // Match both the Unix ("no such file") and Windows ("cannot find the
+            // file specified" / "program not found") not-found error messages so an
+            // uninstalled agent CLI opens a plain shell instead of erroring out.
+            const errText = String(spawnErr).toLowerCase();
+            const notFound =
+              errText.includes("no such file") ||
+              errText.includes("cannot find") ||
+              errText.includes("not found") ||
+              errText.includes("os error 2");
+            if (command && notFound) {
               term.writeln(
                 `\r\n\x1b[90m[${command} não encontrado no PATH — abrindo shell]\x1b[0m`
               );
