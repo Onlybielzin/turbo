@@ -429,7 +429,7 @@ function formName(level: number): string {
   if (level <= 10) return "Aprendiz";
   if (level <= 20) return "Feiticeiro";
   if (level <= 30) return "Arquimago";
-  if (level <= 40) return "Cavaleiro Arcano";
+  if (level <= 40) return "Mago Celestial";
   return "Deus Arcano";
 }
 

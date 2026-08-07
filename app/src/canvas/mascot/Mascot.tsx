@@ -14,7 +14,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   workSheet,
-  REST_SHEETS,
+  restSheets,
   evolveSheet,
   formIndex,
   FRAME_W,
@@ -44,7 +44,8 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
     const t = setInterval(() => tick((x) => (x + 1) % 1_000_000), 1000);
     return () => clearInterval(t);
   }, []);
-  const restIdx = Math.floor(Date.now() / REST_SWITCH_MS) % REST_SHEETS.length;
+  const rest = restSheets(formIndex(level));
+  const restIdx = Math.floor(Date.now() / REST_SWITCH_MS) % rest.length;
 
   // One-shot evolution when the form changes (level crosses a x0→x1 boundary).
   const [evolveSrc, setEvolveSrc] = useState<string | null>(null);
@@ -65,7 +66,7 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
   }, [level]);
 
   const oneShot = evolveSrc !== null;
-  const sheet = evolveSrc ?? (working ? workSheet(level) : REST_SHEETS[restIdx % REST_SHEETS.length]);
+  const sheet = evolveSrc ?? (working ? workSheet(level) : rest[restIdx % rest.length]);
 
   // Frame ticker: ping-pong for idles, forward-once for the evolution.
   const [frame, setFrame] = useState(0);

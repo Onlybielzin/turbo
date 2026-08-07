@@ -2,12 +2,14 @@
  * Mascot sprite assets — animated MAGE (pixel wizard), 50 levels / 5 forms.
  *
  * Forms metamorphose every 10 levels: Aprendiz (1-10) → Feiticeiro (11-20) →
- * Arquimago (21-30) → Cavaleiro Arcano (31-40) → Deus Arcano (41-50). Within a
+ * Arquimago (21-30) → Mago Celestial (31-40) → Deus Arcano (41-50). Within a
  * form the WORK idle increments per level (aura/weapon/magic).
  *
  * States (see Mascot.tsx):
  *  - WORK  (an agent runs): plays the level's "channeling" idle.
- *  - REST  (idle): cycles cozy idles (breathe, coffee, cat, dragon egg, nap).
+ *  - REST  (idle): cycles cozy idles specific to the CURRENT form. A dragon-egg
+ *    storyline runs through them: tended by the apprentice, cracking, then
+ *    hatching into a baby dragon that grows into a companion.
  *  - EVOLVE: on crossing a form boundary, plays the one-shot transformation.
  *
  * Each sheet is a horizontal strip of FRAME_COUNT frames of FRAME_W x FRAME_H.
@@ -66,11 +68,36 @@ import evolve1 from "../../assets/mascot/mage/evolve-1.png";
 import evolve2 from "../../assets/mascot/mage/evolve-2.png";
 import evolve3 from "../../assets/mascot/mage/evolve-3.png";
 import evolve4 from "../../assets/mascot/mage/evolve-4.png";
-import restBreathe from "../../assets/mascot/mage/rest-breathe.png";
-import restCoffee from "../../assets/mascot/mage/rest-coffee.png";
-import restCat from "../../assets/mascot/mage/rest-cat.png";
-import restEgg from "../../assets/mascot/mage/rest-egg.png";
-import restNap from "../../assets/mascot/mage/rest-nap.png";
+// Form 1 (Aprendiz) REST
+import rest1Breathe from "../../assets/mascot/mage/rest-breathe.png";
+import rest1Coffee from "../../assets/mascot/mage/rest-coffee.png";
+import rest1Cat from "../../assets/mascot/mage/rest-cat.png";
+import rest1Egg from "../../assets/mascot/mage/rest-egg.png";
+import rest1Nap from "../../assets/mascot/mage/rest-nap.png";
+// Form 2 (Feiticeiro) REST
+import rest2Breathe from "../../assets/mascot/mage/rest-f2-breathe.png";
+import rest2Book from "../../assets/mascot/mage/rest-f2-book.png";
+import rest2Cat from "../../assets/mascot/mage/rest-f2-cat.png";
+import rest2Egg from "../../assets/mascot/mage/rest-f2-egg.png";
+import rest2Orb from "../../assets/mascot/mage/rest-f2-orb.png";
+// Form 3 (Arquimago) REST — the dragon egg hatches here
+import rest3Breathe from "../../assets/mascot/mage/rest-f3-breathe.png";
+import rest3Hatch from "../../assets/mascot/mage/rest-f3-hatch.png";
+import rest3Cat from "../../assets/mascot/mage/rest-f3-cat.png";
+import rest3Tea from "../../assets/mascot/mage/rest-f3-tea.png";
+import rest3Scroll from "../../assets/mascot/mage/rest-f3-scroll.png";
+// Form 4 (Mago Celestial) REST — baby dragon flies around
+import rest4Breathe from "../../assets/mascot/mage/rest-f4-breathe.png";
+import rest4Dragon from "../../assets/mascot/mage/rest-f4-dragon.png";
+import rest4Cat from "../../assets/mascot/mage/rest-f4-cat.png";
+import rest4Stargaze from "../../assets/mascot/mage/rest-f4-stargaze.png";
+import rest4Chart from "../../assets/mascot/mage/rest-f4-chart.png";
+// Form 5 (Deus Arcano) REST — grown dragon companion
+import rest5Breathe from "../../assets/mascot/mage/rest-f5-breathe.png";
+import rest5Dragon from "../../assets/mascot/mage/rest-f5-dragon.png";
+import rest5Cat from "../../assets/mascot/mage/rest-f5-cat.png";
+import rest5Meditate from "../../assets/mascot/mage/rest-f5-meditate.png";
+import rest5Bless from "../../assets/mascot/mage/rest-f5-bless.png";
 
 /** One animation frame is 92x92; sheets carry 17 frames (1 reference + 16). */
 export const FRAME_W = 92;
@@ -89,9 +116,13 @@ const WORK_SHEETS: readonly string[] = [
 /** Transformation sheets, indexed by target form (evolve into form 2..5). */
 const EVOLVE_SHEETS: readonly string[] = [evolve1, evolve2, evolve3, evolve4];
 
-/** REST idles cycled while the group is idle. */
-export const REST_SHEETS: readonly string[] = [
-  restBreathe, restCoffee, restCat, restEgg, restNap,
+/** REST idles per form (index = formIndex 0..4), each its own 5-idle set. */
+const REST_BY_FORM: readonly (readonly string[])[] = [
+  [rest1Breathe, rest1Coffee, rest1Cat, rest1Egg, rest1Nap],
+  [rest2Breathe, rest2Book, rest2Cat, rest2Egg, rest2Orb],
+  [rest3Breathe, rest3Hatch, rest3Cat, rest3Tea, rest3Scroll],
+  [rest4Breathe, rest4Dragon, rest4Cat, rest4Stargaze, rest4Chart],
+  [rest5Breathe, rest5Dragon, rest5Cat, rest5Meditate, rest5Bless],
 ];
 
 /** Form index (0..4) for a level: Aprendiz=0, Feiticeiro=1, … Deus=4. */
@@ -103,6 +134,12 @@ export function formIndex(level: number): number {
 export function workSheet(level: number): string {
   const idx = Math.min(Math.max(Math.floor(level) || 1, 1), WORK_SHEETS.length) - 1;
   return WORK_SHEETS[idx];
+}
+
+/** The cozy REST idles for a form index (0..4). */
+export function restSheets(formIdx: number): readonly string[] {
+  const i = Math.min(Math.max(formIdx, 0), REST_BY_FORM.length - 1);
+  return REST_BY_FORM[i];
 }
 
 /** The transformation sheet to play when evolving INTO the given form index
