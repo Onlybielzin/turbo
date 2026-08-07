@@ -23,6 +23,8 @@ import {
   useCanvasStore,
 } from "./store";
 import { CreateAgentModal } from "./CreateAgentModal";
+import { Mascot } from "./mascot/Mascot";
+import { isActive } from "./activity";
 import { sumUsage, formatTokens, formatCost, groupLevel } from "./usage";
 import "./GroupFrame.css";
 
@@ -47,9 +49,35 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
       .filter((u): u is NonNullable<typeof u> => Boolean(u))
   );
 
+  const lvl = groupLevel(groupTotal.total_tokens);
+  // Re-render on a 1s tick so WORK/REST tracks live PTY activity.
+  const [, activityTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => activityTick((x) => (x + 1) % 1_000_000), 1000);
+    return () => clearInterval(t);
+  }, []);
+  // "Working" = a child terminal produced output in the last ~2.5s (agent
+  // actively busy), NOT merely that a running process exists.
+  const working = nodes.some(
+    (n) => n.parentId === id && n.type === "terminal" && isActive(n.id),
+  );
+
   const [editing, setEditing] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [levelUpTo, setLevelUpTo] = useState<number | null>(null);
+  const prevLevelRef = useRef(lvl.level);
   const labelRef = useRef<HTMLSpanElement>(null);
+
+  // Show a corner toast when the group levels up.
+  useEffect(() => {
+    if (lvl.level > prevLevelRef.current) {
+      setLevelUpTo(lvl.level);
+      prevLevelRef.current = lvl.level;
+      const t = setTimeout(() => setLevelUpTo(null), 3500);
+      return () => clearTimeout(t);
+    }
+    prevLevelRef.current = lvl.level;
+  }, [lvl.level]);
 
   const agents = data.agents ?? [];
   const worktrees = data.worktrees ?? [];
@@ -194,6 +222,11 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
 
   return (
     <div className="group-frame">
+      {levelUpTo !== null && (
+        <div className="group-frame__levelup nodrag" role="status">
+          ⬆ Nível {levelUpTo} · {formName(levelUpTo)}
+        </div>
+      )}
       <div className="group-frame__label-bar">
         <span
           ref={labelRef}
@@ -266,27 +299,27 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           <span className="group-frame__sidebar-count">{agents.length}</span>
         </div>
 
-        {(() => {
-          const lvl = groupLevel(groupTotal.total_tokens);
-          return (
-            <div className="group-frame__level" title="Nível do projeto — sobe conforme o grupo gasta tokens">
-              <div className="group-frame__level-row">
-                <span className="group-frame__level-badge">Nv {lvl.level}</span>
-                <span className="group-frame__level-caption">
-                  {lvl.nextAt
-                    ? `${formatTokens(groupTotal.total_tokens)} / ${formatTokens(lvl.nextAt)} tok`
-                    : "máx"}
-                </span>
-              </div>
-              <div className="group-frame__level-bar">
-                <div
-                  className="group-frame__level-fill"
-                  style={{ width: `${Math.round(lvl.progress * 100)}%` }}
-                />
-              </div>
-            </div>
-          );
-        })()}
+        <div className="group-frame__level" title="Nível do projeto — sobe conforme o grupo gasta tokens">
+          <div className="group-frame__mascot">
+            <Mascot level={lvl.level} working={working} size={76} />
+          </div>
+          <div className="group-frame__level-row">
+            <span className="group-frame__level-badge">
+              Nv {lvl.level} · {formName(lvl.level)}
+            </span>
+            <span className="group-frame__level-caption">
+              {lvl.nextAt
+                ? `${formatTokens(groupTotal.total_tokens)} / ${formatTokens(lvl.nextAt)} tok`
+                : "máx"}
+            </span>
+          </div>
+          <div className="group-frame__level-bar">
+            <div
+              className="group-frame__level-fill"
+              style={{ width: `${Math.round(lvl.progress * 100)}%` }}
+            />
+          </div>
+        </div>
         <div className="group-frame__roster">
           {agents.length === 0 ? (
             <p className="group-frame__empty">Nenhum agente ainda.</p>
@@ -359,6 +392,15 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
       )}
     </div>
   );
+}
+
+/** Mascot form name for a given level (metamorphosis every 10 levels). */
+function formName(level: number): string {
+  if (level <= 10) return "Aprendiz";
+  if (level <= 20) return "Feiticeiro";
+  if (level <= 30) return "Arquimago";
+  if (level <= 40) return "Cavaleiro Arcano";
+  return "Deus Arcano";
 }
 
 export const GroupFrame = memo(GroupFrameInner);

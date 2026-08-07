@@ -1,0 +1,20 @@
+/* Mascot — spritesheet frame player on the group level card. */
+
+.turbo-mascot {
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* One frame of the sheet, shown via background-position; scaled to the box.
+   image-rendering pixelated keeps the pixel art crisp when scaled. */
+.turbo-mascot__view {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  transform-origin: center center;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
+}

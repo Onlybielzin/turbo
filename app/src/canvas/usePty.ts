@@ -23,6 +23,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { NodeStatus } from "./store";
+import { markActivity } from "./activity";
 
 // Singleton: track which node currently has the WebGL renderer.
 // We use a module-level variable so all TerminalNode instances share it.
@@ -156,7 +157,10 @@ export function usePty({
     let ptyId: number | null = null;
 
     const onData = new Channel<number[]>();
-    onData.onmessage = (bytes) => term.write(new Uint8Array(bytes));
+    onData.onmessage = (bytes) => {
+      markActivity(nodeId); // PTY produced output → this agent is actively working
+      term.write(new Uint8Array(bytes));
+    };
 
     void (async () => {
       const spawnPty = async (cmd?: string, cmdArgs?: string[]) => {

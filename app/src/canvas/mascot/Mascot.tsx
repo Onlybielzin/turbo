@@ -1,0 +1,114 @@
+/**
+ * Mascot — the group's evolving pixel wizard, shown on the level card.
+ *
+ * States:
+ *  - working=true  → the level's "channeling" idle (magic scales with level).
+ *  - working=false → cycles the cozy REST idles (breathe, coffee, cat, dragon
+ *    egg, nap).
+ *  - evolving      → on crossing a form boundary (every 10 levels) plays the
+ *    one-shot transformation, then settles into the new form's idle.
+ *
+ * Idles play in PING-PONG (0→last→0) for a seamless loop; the evolution plays
+ * forward once and holds the last frame until it ends.
+ */
+import { useEffect, useRef, useState } from "react";
+import {
+  workSheet,
+  REST_SHEETS,
+  evolveSheet,
+  formIndex,
+  FRAME_W,
+  FRAME_H,
+  FRAME_COUNT,
+} from "./mascotAssets";
+import "./Mascot.css";
+
+interface MascotProps {
+  /** Current group level (1..50). */
+  level: number;
+  /** True when at least one agent/terminal is running in the group. */
+  working?: boolean;
+  /** Rendered box size in px (square). Default 76. */
+  size?: number;
+}
+
+const FPS = 12;
+const REST_SWITCH_MS = 7000;
+const EVOLVE_MS = 1600;
+
+export function Mascot({ level, working = false, size = 76 }: MascotProps) {
+  // Advance the REST animation by WALL-CLOCK time so it keeps cycling even
+  // though GroupFrame re-renders (token polling) would reset a plain counter.
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => tick((x) => (x + 1) % 1_000_000), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const restIdx = Math.floor(Date.now() / REST_SWITCH_MS) % REST_SHEETS.length;
+
+  // One-shot evolution when the form changes (level crosses a x0→x1 boundary).
+  const [evolveSrc, setEvolveSrc] = useState<string | null>(null);
+  const prevLevel = useRef(Math.floor(level) || 1);
+  useEffect(() => {
+    const lv = Math.floor(level) || 1;
+    if (lv > prevLevel.current && formIndex(lv) > formIndex(prevLevel.current)) {
+      const s = evolveSheet(formIndex(lv));
+      prevLevel.current = lv;
+      if (s) {
+        setEvolveSrc(s);
+        const t = setTimeout(() => setEvolveSrc(null), EVOLVE_MS);
+        return () => clearTimeout(t);
+      }
+    } else {
+      prevLevel.current = lv;
+    }
+  }, [level]);
+
+  const oneShot = evolveSrc !== null;
+  const sheet = evolveSrc ?? (working ? workSheet(level) : REST_SHEETS[restIdx % REST_SHEETS.length]);
+
+  // Frame ticker: ping-pong for idles, forward-once for the evolution.
+  const [frame, setFrame] = useState(0);
+  const dir = useRef(1);
+  useEffect(() => {
+    setFrame(0);
+    dir.current = 1;
+    const t = setInterval(() => {
+      setFrame((f) => {
+        if (oneShot) return Math.min(f + 1, FRAME_COUNT - 1);
+        let nf = f + dir.current;
+        if (nf >= FRAME_COUNT - 1) {
+          nf = FRAME_COUNT - 1;
+          dir.current = -1;
+        } else if (nf <= 0) {
+          nf = 0;
+          dir.current = 1;
+        }
+        return nf;
+      });
+    }, 1000 / FPS);
+    return () => clearInterval(t);
+  }, [sheet, oneShot]);
+
+  const scale = size / FRAME_H;
+
+  return (
+    <div
+      className={`turbo-mascot${oneShot ? " turbo-mascot--evolving" : ""}`}
+      style={{ width: size, height: size }}
+      title={`Turbo — Nível ${level}${working ? " (trabalhando)" : ""}`}
+      aria-label={`Mascote Turbo, nível ${level}`}
+    >
+      <div
+        className="turbo-mascot__view"
+        style={{
+          width: FRAME_W,
+          height: FRAME_H,
+          transform: `scale(${scale})`,
+          backgroundImage: `url(${sheet})`,
+          backgroundPosition: `${-frame * FRAME_W}px 0`,
+        }}
+      />
+    </div>
+  );
+}

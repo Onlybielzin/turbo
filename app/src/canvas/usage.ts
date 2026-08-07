@@ -7,13 +7,23 @@ export function formatTokens(n: number): string {
   return String(n);
 }
 
-/** Cumulative token thresholds for the 10 group levels (index 0 = level 1). */
-const LEVEL_THRESHOLDS = [
-  0, 100_000, 300_000, 900_000, 2_700_000, 8_000_000, 24_000_000, 72_000_000,
-  216_000_000, 650_000_000,
-];
+/** Highest mascot level (5 forms × 10 levels). */
+export const MAX_LEVEL = 50;
 
-/** Group level (1..10) by total tokens spent, plus progress to the next level. */
+/** Cumulative token thresholds for the 50 group levels (index 0 = level 1).
+ * Level 1 starts at 0, then geometric (~1.24×/level) so all 50 forms stay
+ * reachable over a long-lived project. */
+const LEVEL_THRESHOLDS: number[] = (() => {
+  const arr = [0];
+  let t = 100_000;
+  for (let i = 1; i < MAX_LEVEL; i++) {
+    arr.push(Math.round(t));
+    t *= 1.24;
+  }
+  return arr;
+})();
+
+/** Group level (1..MAX_LEVEL) by total tokens spent, plus progress to the next level. */
 export function groupLevel(tokens: number): {
   level: number;
   progress: number;
@@ -23,7 +33,7 @@ export function groupLevel(tokens: number): {
   for (let i = 0; i < LEVEL_THRESHOLDS.length; i++) {
     if (tokens >= LEVEL_THRESHOLDS[i]) level = i + 1;
   }
-  if (level >= 10) return { level: 10, progress: 1, nextAt: null };
+  if (level >= MAX_LEVEL) return { level: MAX_LEVEL, progress: 1, nextAt: null };
   const cur = LEVEL_THRESHOLDS[level - 1];
   const next = LEVEL_THRESHOLDS[level];
   const progress = Math.min(1, Math.max(0, (tokens - cur) / (next - cur)));
