@@ -135,8 +135,13 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
     }
   }, [id, data.cwd, setGroupWorktrees, openWorktreeGroup]);
 
-  // Close a worktree subgroup: kill its terminals' PTYs, then drop the frame.
-  const handleCloseWorktreeGroup = useCallback(() => {
+  // Close a group (project or worktree subgroup): kill its terminals' PTYs, then
+  // drop the frame. Confirms first — closing loses the group and its terminals.
+  const handleCloseGroup = useCallback(() => {
+    const msg = isWorktreeGroup
+      ? "Fechar este subgrupo de worktree? Os terminais abertos serão encerrados."
+      : `Fechar o grupo "${data.label}"? Todos os terminais abertos serão encerrados.`;
+    if (!window.confirm(msg)) return;
     for (const n of nodes) {
       if (n.parentId === id && n.type === "terminal") {
         const pid = (n.data as TerminalNodeData).ptyId;
@@ -144,7 +149,7 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
       }
     }
     removeNode(id);
-  }, [id, nodes, removeNode]);
+  }, [id, nodes, removeNode, isWorktreeGroup, data.label]);
 
   const handleDoubleClick = useCallback(() => {
     setEditing(true);
@@ -244,20 +249,22 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
         <span className="group-frame__cwd" title={data.cwd}>
           {cwdDisplay}
         </span>
-        {isWorktreeGroup && (
-          <button
-            type="button"
-            className="group-frame__close nodrag"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleCloseWorktreeGroup();
-            }}
-            title="Fechar subgrupo da worktree (mata os terminais)"
-            aria-label="Fechar subgrupo da worktree"
-          >
-            ✕
-          </button>
-        )}
+        <button
+          type="button"
+          className="group-frame__close nodrag"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCloseGroup();
+          }}
+          title={
+            isWorktreeGroup
+              ? "Fechar subgrupo da worktree (mata os terminais)"
+              : "Fechar grupo (mata os terminais)"
+          }
+          aria-label={isWorktreeGroup ? "Fechar subgrupo da worktree" : "Fechar grupo"}
+        >
+          ✕
+        </button>
       </div>
       {/* Worktree lanes bar — one chip per git worktree, nodrag so clicks don't pan.
           Only on the repo/root group; a worktree subgroup doesn't show it. */}
