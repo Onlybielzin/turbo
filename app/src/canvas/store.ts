@@ -26,21 +26,6 @@ import { childPosition, CHILD_NODE_WIDTH, CHILD_NODE_HEIGHT } from "./layout";
 
 export type NodeStatus = "running" | "ok" | "error";
 
-/**
- * Rewrite a persisted Claude parent's launch args for a RESTORE spawn.
- *
- * The interactive parent is first launched with `--session-id <uuid>` (create).
- * Those args get persisted; on app reopen the same args are re-run verbatim, but
- * `--session-id` is create-only — Claude refuses with "Session ID <uuid> is
- * already in use" and the process exits. Swapping the flag to `--resume <uuid>`
- * continues the existing conversation instead. No-op for Codex (never carries
- * `--session-id`) and idempotent for already-resumed args.
- */
-export function resumeParentArgs(args?: string[]): string[] | undefined {
-  if (!args) return args;
-  return args.map((a) => (a === "--session-id" ? "--resume" : a));
-}
-
 /** Extra data carried by a TerminalNode */
 export interface TerminalNodeData extends Record<string, unknown> {
   label: string;
@@ -50,6 +35,12 @@ export interface TerminalNodeData extends Record<string, unknown> {
   /** Command to launch in the PTY. Defaults to shell if omitted. */
   command?: string;
   args?: string[];
+  /** Backend token (e.g. "codex", "opus", "fable") — the STABLE identity used to
+   *  RE-COMPOSE the launch command at restore time (fresh port + resume). */
+  agent?: string;
+  /** Agent role / system prompt — persisted so restore can recompose without
+   *  depending on the (port-stale) baked args. */
+  role?: string;
   /** Extra env vars to inject into the PTY process (e.g. TURBO_GROUP_ID). */
   env?: [string, string][];
   /** Accent color of the agent this terminal runs (from its AgentDef). */
@@ -139,7 +130,7 @@ export const AGENT_OPTIONS: { value: string; label: string }[] = [
   { value: "opus", label: "Opus" },
   { value: "sonnet", label: "Sonnet" },
   { value: "haiku", label: "Haiku" },
-  { value: "codex", label: "Codex" },
+  { value: "codex", label: "Codex (padrão)" },
 ];
 
 /** Accent colors assignable to agents. New agents pick the next unused one. */
@@ -216,7 +207,10 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string) => string;
+  /** Replace a terminal's launch command+args (used by restore to swap in the
+   *  freshly-composed `resume` command before the PTY spawns). */
+  setTerminalSpawn: (nodeId: string, command: string, args: string[]) => void;
   /** Cache detected git worktrees for a group (populated by GroupFrame on mount). */
   setGroupWorktrees: (groupId: string, list: Worktree[]) => void;
   /** Set the active worktree raia for a group. */
@@ -519,7 +513,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -555,6 +549,8 @@ export const useCanvasStore = create<CanvasState>()(
         color,
         sessionId,
         worktree,
+        agent,
+        role,
       } as TerminalNodeData,
       style: {
         width: 780,
@@ -808,6 +804,16 @@ export const useCanvasStore = create<CanvasState>()(
     });
   },
 
+  setTerminalSpawn: (nodeId: string, command: string, args: string[]) => {
+    set({
+      nodes: get().nodes.map((n) =>
+        n.id === nodeId
+          ? { ...n, data: { ...n.data, command, args } }
+          : n
+      ),
+    });
+  },
+
   normalizeGroups: () => {
     set({ nodes: separateGroups(reanchorGroups(get().nodes)) });
   },
@@ -869,11 +875,9 @@ export const useCanvasStore = create<CanvasState>()(
                     ...(n.data as TerminalNodeData),
                     ptyId: null,
                     status: "running" as NodeStatus,
-                    // On restore the Claude session already exists on disk, so
-                    // re-running `--session-id <uuid>` fails with "Session ID ...
-                    // is already in use" and the process exits. Swap it to
-                    // `--resume <uuid>` so reopening continues the conversation.
-                    args: resumeParentArgs((n.data as TerminalNodeData).args),
+                    // command+args are RE-COMPOSED before the canvas mounts (see
+                    // prepareRestore in mcp.ts) so the conversation continues with
+                    // this session's MCP port — no stale-args replay here.
                   },
                 } as AppNode)
               : n

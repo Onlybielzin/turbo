@@ -10,8 +10,9 @@
  * pre-filled and saving updates that agent's definition in place (including its
  * instructions / system prompt) instead of creating a new one.
  */
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 import {
   AGENT_OPTIONS,
   AGENT_PRESETS,
@@ -21,6 +22,8 @@ import {
   useCanvasStore,
 } from "./store";
 import "./CreateAgentModal.css";
+
+type ModelOption = { value: string; label: string; description?: string };
 
 interface CreateAgentModalProps {
   groupId: string;
@@ -36,6 +39,21 @@ export function CreateAgentModal({ groupId, defaultColor, onClose, agent }: Crea
   const isEditing = Boolean(agent);
   const [name, setName] = useState(agent?.name ?? "");
   const [model, setModel] = useState(agent?.model ?? "fable");
+  // Codex GPT models are fetched from the CLI's own cache so the dropdown lists
+  // every available model (not just a generic "codex") and stays current.
+  const [codexModels, setCodexModels] = useState<ModelOption[]>([]);
+  useEffect(() => {
+    let alive = true;
+    void invoke<ModelOption[]>("codex_models")
+      .then((list) => {
+        if (alive) setCodexModels(list);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const modelOptions: ModelOption[] = [...AGENT_OPTIONS, ...codexModels];
   const [prompt, setPrompt] = useState(agent?.prompt ?? "");
   const [color, setColor] = useState(agent?.color ?? defaultColor);
 
@@ -122,8 +140,8 @@ export function CreateAgentModal({ groupId, defaultColor, onClose, agent }: Crea
           <label className="agent-modal__field">
             <span>Modelo</span>
             <select value={model} onChange={(e) => setModel(e.target.value)}>
-              {AGENT_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
+              {modelOptions.map((o) => (
+                <option key={o.value} value={o.value} title={o.description}>
                   {o.label}
                 </option>
               ))}

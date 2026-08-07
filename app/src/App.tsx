@@ -2,10 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { Canvas } from "./canvas/Canvas";
 import { ErrorBoundary } from "./canvas/ErrorBoundary";
 import { checkForUpdates } from "./updater";
+import { prepareRestore } from "./canvas/mcp";
 import "./App.css";
 
 function App() {
   const [checking, setChecking] = useState(false);
+  // Gate the canvas on restore-prep: recompose every restored agent terminal's
+  // launch command for THIS session's MCP port + resume flags BEFORE they mount
+  // and spawn (avoids dead-port MCP handshakes and fresh-instead-of-resumed chats).
+  const [mcpReady, setMcpReady] = useState(false);
+
+  useEffect(() => {
+    void prepareRestore().finally(() => setMcpReady(true));
+  }, []);
 
   useEffect(() => {
     void checkForUpdates();
@@ -37,7 +46,7 @@ function App() {
         </button>
       </header>
       <ErrorBoundary label="Canvas">
-        <Canvas />
+        {mcpReady ? <Canvas /> : null}
       </ErrorBoundary>
     </div>
   );

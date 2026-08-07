@@ -256,20 +256,27 @@ async fn create_group(
     backend: Option<String>,
     prompt: Option<String>,
     session_id: Option<String>,
+    resume: Option<bool>,
 ) -> Result<ParentSpawn, String> {
     let cwd_path = Path::new(&cwd);
     let backend = AgentBackend::parse(backend.as_deref().unwrap_or(""));
 
     // Register the group + wire the MCP server (writes `.mcp.json` for Claude,
-    // returns the URL for Codex). Server is already listening (D-02 guaranteed).
-    // The parent agent starts AFTER this returns and the Toolbar calls
-    // addTerminalNode (which triggers usePty on mount).
+    // returns the URL for Codex) with THIS session's port. Server is already
+    // listening (D-02 guaranteed). Called both on fresh open (resume=false) and
+    // on restore (resume=true) — the command is composed fresh at spawn time so
+    // the port is always current and the conversation continues instead of
+    // starting over (or crashing on a dead port / already-used session id).
     let mcp_url = registry
         .register(&group_id, cwd_path, mcp_state.port, &backend)
         .map_err(|e| format!("failed to register group: {e}"))?;
 
-    let (command, args) =
-        backend.parent_command(&mcp_url, prompt.as_deref(), session_id.as_deref());
+    let (command, args) = backend.parent_command(
+        &mcp_url,
+        prompt.as_deref(),
+        session_id.as_deref(),
+        resume.unwrap_or(false),
+    );
     Ok(ParentSpawn { command, args })
 }
 
@@ -286,6 +293,76 @@ fn session_usage(session_id: String) -> usage::UsageReport {
 #[tauri::command]
 fn codex_usage(cwd: String) -> usage::UsageReport {
     usage::codex_usage(&cwd)
+}
+
+/// The port the embedded MCP server is listening on THIS session (0 if it
+/// failed to start). The server binds an ephemeral port that changes every
+/// launch; the frontend needs it to rewrite a restored Codex terminal's baked
+/// MCP URL (Codex wires the URL inline via `-c`, unlike Claude's `.mcp.json`).
+#[tauri::command]
+fn mcp_port(mcp_state: State<'_, McpState>) -> u16 {
+    mcp_state.port
+}
+
+/// A selectable agent model for the "create agent" dropdown.
+#[derive(serde::Serialize)]
+pub struct AgentModelOption {
+    /// Backend token consumed by `AgentBackend::parse` (e.g. "codex:gpt-5.6-sol").
+    value: String,
+    /// Human label shown in the UI (the model's display name).
+    label: String,
+    /// One-line model description (shown as a tooltip).
+    description: String,
+}
+
+/// The Codex models offered in its `/model` picker, read from the CLI's own
+/// on-disk cache (`~/.codex/models_cache.json`, refreshed by codex). Returned so
+/// the UI lists every selectable model instead of a single generic "codex" — and
+/// stays current automatically. Filters to `visibility == "list"`, matching the
+/// picker exactly (drops hidden routing aliases like `-wm` and `codex-auto-review`).
+/// Empty if the cache is absent/unreadable (the UI keeps the plain "Codex" default).
+#[tauri::command]
+fn codex_models() -> Vec<AgentModelOption> {
+    let Ok(home) = std::env::var("HOME") else {
+        return Vec::new();
+    };
+    let path = Path::new(&home).join(".codex/models_cache.json");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Vec::new();
+    };
+    json.get("models")
+        .and_then(|m| m.as_array())
+        .map(|models| {
+            models
+                .iter()
+                .filter_map(|m| {
+                    let slug = m.get("slug").and_then(|v| v.as_str())?;
+                    // Only user-selectable models (same set as codex's `/model`
+                    // picker); hidden aliases and review-only models are excluded.
+                    if m.get("visibility").and_then(|v| v.as_str()) != Some("list") {
+                        return None;
+                    }
+                    let label = m
+                        .get("display_name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(slug);
+                    let description = m
+                        .get("description")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Some(AgentModelOption {
+                        value: format!("codex:{slug}"),
+                        label: label.to_string(),
+                        description,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Whether the `claude` and `codex` CLIs are available on this machine (present
@@ -358,6 +435,8 @@ pub fn run() {
             create_group,
             session_usage,
             codex_usage,
+            mcp_port,
+            codex_models,
             cli_status,
             worktrees::list_worktrees,
             worktrees::create_worktree,

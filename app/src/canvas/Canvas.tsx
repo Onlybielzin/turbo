@@ -24,10 +24,9 @@ import {
   MarkerType,
 } from "@xyflow/react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
-import { useCanvasStore, GroupNodeData, nextAgentColor } from "./store";
+import { useCanvasStore, nextAgentColor } from "./store";
 import { TerminalNode } from "./TerminalNode";
 import { GroupFrame } from "./GroupFrame";
 import { ViewerNode } from "./ViewerNode";
@@ -131,20 +130,9 @@ function CanvasInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Session restore: groups rehydrated from localStorage carry a `.mcp.json` that
-  // points to LAST session's (now-dead) MCP port. Rewrite it for each restored
-  // group with the current session's port so a restored parent claude can still
-  // see spawn_agent. Runs once on mount; new groups handle this via the Toolbar.
-  useEffect(() => {
-    const groups = useCanvasStore
-      .getState()
-      .nodes.filter((n) => n.type === "group");
-    for (const g of groups) {
-      const cwd = (g.data as GroupNodeData).cwd;
-      if (cwd) void invoke("create_group", { groupId: g.id, cwd }).catch(() => {});
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Session restore (group MCP re-registration + terminal command recomposition)
+  // happens in prepareRestore (see mcp.ts), gated by App BEFORE this canvas mounts,
+  // so restored terminals spawn already wired to this session's MCP port.
 
   // Hold Shift while dragging to snap nodes/groups to the 24px background grid
   // (aligns their edges with the background dots).

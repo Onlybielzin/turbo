@@ -105,6 +105,8 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     nodeId: id,
     hostRef,
     command: data.command,
+    // Args are already composed for this session (fresh open, or recomposed with
+    // the current MCP port + resume flags by prepareRestore before mount).
     args: data.args as string[] | undefined,
     cwd: data.cwd,
     env: data.env as [string, string][] | undefined,

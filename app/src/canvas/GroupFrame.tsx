@@ -203,6 +203,7 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           backend: agent.model,
           prompt: agent.prompt || null,
           sessionId,
+          resume: false,
         });
         const nodeId = addTerminalNode(
           id,
@@ -219,6 +220,9 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           agent.color,
           sessionId,
           wtPath,
+          // Stable identity persisted for restore recomposition (see prepareRestore).
+          agent.model,
+          agent.prompt || undefined,
         );
         updateNodeLabel(nodeId, agent.name);
       } catch (err) {
