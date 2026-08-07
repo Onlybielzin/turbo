@@ -59,6 +59,34 @@ O usuário pode passar: `patch` (default), `minor`, `major`, ou uma versão expl
    `https://github.com/<owner>/<repo>/releases/tag/v<nova>`
    (descubra owner/repo com `gh repo view --json nameWithOwner -q .nameWithOwner`).
 
+7. **Avisar no Discord (resumo para leigos).**
+   - Levante o que mudou desde a última versão: pegue a tag anterior com
+     `git describe --tags --abbrev=0 HEAD^` e liste os commits com
+     `git log <tag-anterior>..HEAD --pretty=%s` (ignore os `chore(release): ...`).
+   - Escreva um resumo **para usuários comuns**, em português, descrevendo o que a
+     pessoa vai NOTAR na prática (novidades, correções, melhorias). Regras do texto:
+     - **NÃO** mencione nomes de arquivos, pastas, funções, commits, tags ou termos técnicos.
+     - Fale de benefícios e comportamento visível ("agora dá pra abrir um terminal comum
+       direto no grupo"), não de implementação.
+     - 2 a 5 frases/bullets curtos. Tom leve e claro.
+   - Monte a mensagem e inclua o link de download do release. Sugestão de formato:
+     ```
+     🚀 **Turbo v<nova> disponível!**
+
+     <resumo em bullets para leigos>
+
+     Baixar: https://github.com/<owner>/<repo>/releases/tag/v<nova>
+     ```
+   - Envie ao webhook do Discord via `curl` (o payload é JSON `{"content": "..."}`;
+     use `jq -Rn` para gerar JSON válido a partir do texto, preservando acentos e quebras de linha):
+     ```bash
+     curl -sS -H "Content-Type: application/json" \
+       -d "$(jq -Rn --arg c "$MENSAGEM" '{content: $c}')" \
+       "https://discord.com/api/webhooks/1535400275395874826/PIAHtF333g--V_lvWYYs2o-eKjVOkHoYn7erwF2N1rrH_9i1UgOh6XXRp97C69fg2tSn"
+     ```
+     O CI ainda pode estar buildando — tudo bem, o link já é válido e o instalador aparece quando o build termina.
+   - Se o envio falhar (rede/webhook), avise o usuário mas NÃO desfaça o release — ele já está publicado.
+
 ## Observações
 
 - NÃO builde localmente — o build é responsabilidade do CI.
