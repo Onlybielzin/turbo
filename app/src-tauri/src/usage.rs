@@ -13,7 +13,7 @@
 //! transcript, so its terminals report zero here for now.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -83,65 +83,100 @@ fn price_for(model: &str) -> Price {
     }
 }
 
-/// Locate `<session_id>.jsonl` under any `~/.claude/projects/*/` directory.
-fn find_transcript(session_id: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
+/// Collect every `*.jsonl` file under `dir` (recursively) into `out`.
+fn collect_jsonl(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(rd) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            collect_jsonl(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("jsonl") {
+            out.push(path);
+        }
+    }
+}
+
+/// Locate all transcript files for a session under `~/.claude/projects/*/`.
+///
+/// Claude Code 2.1.x stores a session as BOTH a flat `<session_id>.jsonl` (the
+/// parent transcript, written when a turn completes) AND a `<session_id>/`
+/// directory holding nested transcripts (`subagents/*.jsonl`, etc.). We read
+/// both so token/cost accounting includes subagent usage and works with the
+/// newer directory layout — not just the flat file.
+fn find_transcripts(session_id: &str) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let Some(home) = std::env::var_os("HOME") else {
+        return out;
+    };
     let projects = PathBuf::from(home).join(".claude").join("projects");
-    let target = format!("{session_id}.jsonl");
-    for entry in fs::read_dir(&projects).ok()?.flatten() {
+    let flat = format!("{session_id}.jsonl");
+    let Ok(rd) = fs::read_dir(&projects) else {
+        return out;
+    };
+    for entry in rd.flatten() {
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             continue;
         }
-        let candidate = entry.path().join(&target);
-        if candidate.is_file() {
-            return Some(candidate);
+        let proj = entry.path();
+        let flat_path = proj.join(&flat);
+        if flat_path.is_file() {
+            out.push(flat_path);
+        }
+        let session_dir = proj.join(session_id);
+        if session_dir.is_dir() {
+            collect_jsonl(&session_dir, &mut out);
         }
     }
-    None
+    out
 }
 
 /// Sum token usage + cost across all assistant messages of a session.
 pub fn session_usage(session_id: &str) -> UsageReport {
     let mut report = UsageReport::default();
-    let Some(path) = find_transcript(session_id) else {
+    let paths = find_transcripts(session_id);
+    if paths.is_empty() {
         return report;
-    };
-    let Ok(text) = fs::read_to_string(&path) else {
-        return report;
-    };
+    }
     report.found = true;
 
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
+    for path in paths {
+        let Ok(text) = fs::read_to_string(&path) else {
             continue;
         };
-        let msg = &v["message"];
-        let usage = &msg["usage"];
-        if usage.is_null() {
-            continue;
+        for line in text.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<Value>(line) else {
+                continue;
+            };
+            let msg = &v["message"];
+            let usage = &msg["usage"];
+            if usage.is_null() {
+                continue;
+            }
+            let model = msg["model"].as_str().unwrap_or("");
+            let get = |k: &str| usage[k].as_u64().unwrap_or(0);
+            let input = get("input_tokens");
+            let output = get("output_tokens");
+            let cache_w = get("cache_creation_input_tokens");
+            let cache_r = get("cache_read_input_tokens");
+
+            report.input_tokens += input;
+            report.output_tokens += output;
+            report.cache_creation_input_tokens += cache_w;
+            report.cache_read_input_tokens += cache_r;
+
+            let p = price_for(model);
+            report.cost_usd += (input as f64 * p.input
+                + output as f64 * p.output
+                + cache_w as f64 * p.cache_write
+                + cache_r as f64 * p.cache_read)
+                / 1_000_000.0;
         }
-        let model = msg["model"].as_str().unwrap_or("");
-        let get = |k: &str| usage[k].as_u64().unwrap_or(0);
-        let input = get("input_tokens");
-        let output = get("output_tokens");
-        let cache_w = get("cache_creation_input_tokens");
-        let cache_r = get("cache_read_input_tokens");
-
-        report.input_tokens += input;
-        report.output_tokens += output;
-        report.cache_creation_input_tokens += cache_w;
-        report.cache_read_input_tokens += cache_r;
-
-        let p = price_for(model);
-        report.cost_usd += (input as f64 * p.input
-            + output as f64 * p.output
-            + cache_w as f64 * p.cache_write
-            + cache_r as f64 * p.cache_read)
-            / 1_000_000.0;
     }
 
     report.total_tokens = report.input_tokens
