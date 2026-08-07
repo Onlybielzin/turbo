@@ -36,3 +36,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+
+# Turbo runtime artifacts (per-session, not source)
+.mcp.json
+.claude/worktrees/
