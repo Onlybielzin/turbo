@@ -117,6 +117,60 @@ export function usePty({
     // whereas a Canvas/WebGL bitmap gets resampled into blurry, oddly-spaced text
     // when zoomed. For a handful of terminals the DOM renderer's perf is plenty.
 
+    // ── Selection fix under ReactFlow zoom ────────────────────────────────
+    // ReactFlow zooms the whole canvas with `transform: scale(z)`. xterm maps a
+    // pointer position to a cell by dividing the on-screen pixel offset by the
+    // UNSCALED css cell size, so at z≠1 the selection lands on the wrong (higher)
+    // row/col — the offset grows with distance from the top. We patch the internal
+    // MouseService to divide the pointer offset back by the live canvas scale
+    // before xterm maps it. Guarded: if xterm internals change, it degrades to the
+    // stock (correct-at-100%-only) behaviour instead of throwing.
+    const canvasScale = (): number => {
+      const vp = host.closest(".react-flow__viewport");
+      if (!vp) return 1;
+      const t = getComputedStyle(vp).transform;
+      if (!t || t === "none") return 1;
+      try {
+        return new DOMMatrixReadOnly(t).a || 1;
+      } catch {
+        return 1;
+      }
+    };
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ms = (term as any)._core?._mouseService;
+      if (ms && typeof ms.getCoords === "function") {
+        const origGetCoords = ms.getCoords.bind(ms);
+        ms.getCoords = (
+          event: MouseEvent,
+          element: HTMLElement,
+          cols: number,
+          rows: number,
+          isSelection?: boolean
+        ) => {
+          const s = canvasScale();
+          if (s && s !== 1 && event && typeof event.clientX === "number") {
+            const rect = element.getBoundingClientRect();
+            const cx = rect.left + (event.clientX - rect.left) / s;
+            const cy = rect.top + (event.clientY - rect.top) / s;
+            const proxied = new Proxy(event, {
+              get(target, prop) {
+                if (prop === "clientX") return cx;
+                if (prop === "clientY") return cy;
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const v = (target as any)[prop];
+                return typeof v === "function" ? v.bind(target) : v;
+              },
+            });
+            return origGetCoords(proxied, element, cols, rows, isSelection);
+          }
+          return origGetCoords(event, element, cols, rows, isSelection);
+        };
+      }
+    } catch {
+      /* xterm internals changed — keep stock behaviour */
+    }
+
     // ── Clipboard: copy-on-select + Ctrl+C / Ctrl+V (and Ctrl+Shift+C/V) ──
     // Text selection itself is enabled by the `nodrag`/`nowheel` classes on the
     // body (so dragging selects instead of moving the node). Selecting with the
