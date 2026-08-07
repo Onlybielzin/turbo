@@ -26,6 +26,21 @@ import { childPosition, CHILD_NODE_WIDTH, CHILD_NODE_HEIGHT } from "./layout";
 
 export type NodeStatus = "running" | "ok" | "error";
 
+/**
+ * Rewrite a persisted Claude parent's launch args for a RESTORE spawn.
+ *
+ * The interactive parent is first launched with `--session-id <uuid>` (create).
+ * Those args get persisted; on app reopen the same args are re-run verbatim, but
+ * `--session-id` is create-only — Claude refuses with "Session ID <uuid> is
+ * already in use" and the process exits. Swapping the flag to `--resume <uuid>`
+ * continues the existing conversation instead. No-op for Codex (never carries
+ * `--session-id`) and idempotent for already-resumed args.
+ */
+export function resumeParentArgs(args?: string[]): string[] | undefined {
+  if (!args) return args;
+  return args.map((a) => (a === "--session-id" ? "--resume" : a));
+}
+
 /** Extra data carried by a TerminalNode */
 export interface TerminalNodeData extends Record<string, unknown> {
   label: string;
@@ -854,6 +869,11 @@ export const useCanvasStore = create<CanvasState>()(
                     ...(n.data as TerminalNodeData),
                     ptyId: null,
                     status: "running" as NodeStatus,
+                    // On restore the Claude session already exists on disk, so
+                    // re-running `--session-id <uuid>` fails with "Session ID ...
+                    // is already in use" and the process exits. Swap it to
+                    // `--resume <uuid>` so reopening continues the conversation.
+                    args: resumeParentArgs((n.data as TerminalNodeData).args),
                   },
                 } as AppNode)
               : n
