@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
 import { useCanvasStore, GroupNodeData } from "./store";
+import { useShortcutsStore, matchBinding } from "./shortcuts";
 import "./GroupTabs.css";
 
 export function GroupTabs() {
@@ -40,15 +41,18 @@ export function GroupTabs() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ctrl+G → auto-grid layout
-      if (e.ctrlKey && !e.altKey && !e.metaKey && (e.key === "g" || e.key === "G")) {
+      const { bindings } = useShortcutsStore.getState();
+      // Auto-grid layout (default Ctrl+G)
+      if (matchBinding(e, bindings.autoGrid)) {
         e.preventDefault();
         e.stopPropagation();
         doAutoGrid();
         return;
       }
-      // Alt+Tab / Alt+Shift+Tab → next / previous group
-      if (e.altKey && e.key === "Tab") {
+      // Next / previous group (default Alt+Tab / Alt+Shift+Tab)
+      const isNext = matchBinding(e, bindings.nextGroup);
+      const isPrev = matchBinding(e, bindings.prevGroup);
+      if (isNext || isPrev) {
         const gs = useCanvasStore.getState().nodes.filter((n) => n.type === "group");
         if (gs.length === 0) return;
         e.preventDefault();
@@ -56,7 +60,7 @@ export function GroupTabs() {
         const cur = gs.findIndex((g) => g.id === activeIdRef.current);
         const count = gs.length;
         const nextIdx =
-          cur < 0 ? 0 : e.shiftKey ? (cur - 1 + count) % count : (cur + 1) % count;
+          cur < 0 ? 0 : isPrev ? (cur - 1 + count) % count : (cur + 1) % count;
         focusGroup(gs[nextIdx].id);
         return;
       }

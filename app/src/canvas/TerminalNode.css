@@ -7,6 +7,9 @@
   height: 100%;
   border: 1px solid var(--node-border);
   border-radius: 10px;
+  /* Isolate each node's layout+paint from its neighbours so a repaint in one
+     terminal never reflows the whole canvas. */
+  contain: layout paint;
   /* overflow VISIBLE so the NodeResizer handles at the edges are not clipped —
      rounding is done on the header (top) and body (bottom) instead. */
   overflow: visible;
@@ -223,6 +226,53 @@
   outline: none;
   border-bottom-left-radius: 9px;
   border-bottom-right-radius: 9px;
+}
+
+/* ── LOD / hibernation placeholder ────────────────────────────────────────────
+   Covers the body area (below the header) with a cheap card showing the node
+   name. Hidden by default; revealed when the node is either far out on the
+   canvas ([data-lod-far]) or scrolled off-screen (--hibernated). In both modes
+   the xterm body is set to visibility:hidden so the browser skips its expensive
+   DOM paint while dimensions (and the PTY fit) stay intact. */
+.terminal-node__lod {
+  display: none;
+  position: absolute;
+  top: var(--node-header-h, 36px);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: var(--panel);
+  border-bottom-left-radius: 9px;
+  border-bottom-right-radius: 9px;
+  pointer-events: none;
+}
+
+.terminal-node__lod-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted, #b8b0a8);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.terminal-node--agent .terminal-node__lod-name {
+  color: var(--agent-color, var(--muted));
+}
+
+.canvas-area[data-lod-far] .terminal-node__lod,
+.terminal-node--hibernated .terminal-node__lod {
+  display: flex;
+}
+
+.canvas-area[data-lod-far] .terminal-node__body,
+.terminal-node--hibernated .terminal-node__body {
+  visibility: hidden;
 }
 
 /* xterm.js overrides inside the node body */

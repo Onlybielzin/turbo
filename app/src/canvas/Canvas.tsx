@@ -12,32 +12,37 @@
  * - Toolbar: top-left absolute overlay with "+ Novo grupo" button
  * - Empty state: centred message when no nodes exist
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
   BackgroundVariant,
   Controls,
   ReactFlowProvider,
+  useReactFlow,
   NodeTypes,
   DefaultEdgeOptions,
   MarkerType,
+  Viewport,
 } from "@xyflow/react";
 import { listen } from "@tauri-apps/api/event";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
 import { useCanvasStore, nextAgentColor } from "./store";
+import { useSettingsStore } from "./settings";
 import { TerminalNode } from "./TerminalNode";
 import { GroupFrame } from "./GroupFrame";
 import { ViewerNode } from "./ViewerNode";
 import { Toolbar } from "./Toolbar";
 import { GroupTabs } from "./GroupTabs";
+import { SettingsModal } from "./SettingsModal";
 
 const nodeTypes: NodeTypes = {
   terminal: TerminalNode,
   group: GroupFrame,
   viewer: ViewerNode,
 };
+
 
 const defaultEdgeOptions: DefaultEdgeOptions = {
   type: "smoothstep",
@@ -155,10 +160,44 @@ function CanvasInner() {
     };
   }, []);
 
+  // LOD: reflect the current zoom onto a container attribute (data-lod-far) so
+  // CSS collapses terminal bodies to placeholders when far out. The threshold is
+  // user-configurable (settings store) and read live. A ref-gated diff avoids
+  // touching the DOM on every frame of the zoom gesture.
+  const { getViewport } = useReactFlow();
+  const areaRef = useRef<HTMLDivElement>(null);
+  const lodFarRef = useRef(false);
+  const zoomLabelRef = useRef<HTMLSpanElement>(null);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const applyZoom = useCallback((zoom: number) => {
+    const lbl = zoomLabelRef.current;
+    if (lbl) lbl.textContent = `${Math.round(zoom * 100)}%`;
+    const far = zoom < useSettingsStore.getState().lodZoom;
+    if (far === lodFarRef.current) return;
+    lodFarRef.current = far;
+    const el = areaRef.current;
+    if (!el) return;
+    if (far) el.setAttribute("data-lod-far", "");
+    else el.removeAttribute("data-lod-far");
+  }, []);
+
+  const handleMove = useCallback(
+    (_e: MouseEvent | TouchEvent | null, vp: Viewport) => applyZoom(vp.zoom),
+    [applyZoom]
+  );
+
+  // Re-evaluate LOD whenever the user changes the threshold (zoom hasn't moved,
+  // so onMove wouldn't fire) — read the live viewport and re-apply.
+  const lodZoom = useSettingsStore((s) => s.lodZoom);
+  useEffect(() => {
+    applyZoom(getViewport().zoom);
+  }, [lodZoom, applyZoom, getViewport]);
+
   const isEmpty = nodes.length === 0;
 
   return (
-    <div className="canvas-area">
+    <div className="canvas-area" ref={areaRef}>
       <Toolbar />
       <GroupTabs />
       <ReactFlow
@@ -172,6 +211,7 @@ function CanvasInner() {
           if (node.type === "group") resolveGroupOverlap(node.id);
           else normalizeGroups();
         }}
+        onMove={handleMove}
         snapToGrid={snapActive}
         snapGrid={[24, 24]}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -195,6 +235,24 @@ function CanvasInner() {
         />
         <Controls />
       </ReactFlow>
+      {/* Settings gear — opens the preferences dialog (LOD threshold, shortcuts). */}
+      <button
+        type="button"
+        className="canvas-settings-btn"
+        onClick={() => setShowSettings(true)}
+        title="Configurações"
+        aria-label="Configurações"
+      >
+        ⚙
+      </button>
+      {/* Zoom HUD — live readout to calibrate the LOD threshold. Shows the current
+          zoom % and whether terminals are live or collapsed to placeholders. */}
+      <div className="zoom-indicator" aria-hidden="true">
+        <span className="zoom-indicator__pct" ref={zoomLabelRef}>100%</span>
+        <span className="zoom-indicator__state zoom-indicator__state--live">ao vivo</span>
+        <span className="zoom-indicator__state zoom-indicator__state--lod">placeholder</span>
+      </div>
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {isEmpty && (
         <div className="canvas-empty-state">
           <p className="canvas-empty-heading">Nenhum grupo ainda</p>
