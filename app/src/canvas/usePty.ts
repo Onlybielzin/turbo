@@ -182,6 +182,7 @@ export function usePty({
     // (same behaviour as VS Code's integrated terminal). With no selection it is
     // forwarded to the PTY as usual. Ctrl+Shift+C always copies.
     const copySelection = () => {
+      if (!term.hasSelection()) return false;
       const sel = term.getSelection();
       if (sel && sel.trim()) {
         void navigator.clipboard.writeText(sel).catch(() => {});
@@ -218,6 +219,8 @@ export function usePty({
       // next Ctrl+C sends SIGINT. No selection → forward to the PTY (interrupt).
       if (e.ctrlKey && !e.shiftKey && !e.altKey && isC) {
         if (copySelection()) {
+          e.preventDefault();
+          e.stopPropagation();
           term.clearSelection();
           return false;
         }
