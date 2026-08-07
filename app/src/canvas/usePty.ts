@@ -117,29 +117,62 @@ export function usePty({
     // whereas a Canvas/WebGL bitmap gets resampled into blurry, oddly-spaced text
     // when zoomed. For a handful of terminals the DOM renderer's perf is plenty.
 
-    // ── Clipboard: copy-on-select + Ctrl+Shift+C (copy) / Ctrl+Shift+V (paste) ──
+    // ── Clipboard: copy-on-select + Ctrl+C / Ctrl+V (and Ctrl+Shift+C/V) ──
     // Text selection itself is enabled by the `nodrag`/`nowheel` classes on the
     // body (so dragging selects instead of moving the node). Selecting with the
     // mouse auto-copies; the shortcuts give explicit copy/paste.
+    //
+    // Ctrl+C is overloaded: in a terminal it normally sends SIGINT to interrupt
+    // the process. So plain Ctrl+C only COPIES when there is a selection — and it
+    // clears the selection afterwards so a second Ctrl+C falls through as SIGINT
+    // (same behaviour as VS Code's integrated terminal). With no selection it is
+    // forwarded to the PTY as usual. Ctrl+Shift+C always copies.
     const copySelection = () => {
       const sel = term.getSelection();
-      if (sel && sel.trim()) void navigator.clipboard.writeText(sel).catch(() => {});
+      if (sel && sel.trim()) {
+        void navigator.clipboard.writeText(sel).catch(() => {});
+        return true;
+      }
+      return false;
     };
-    host.addEventListener("mouseup", copySelection);
+    const paste = () => {
+      void navigator.clipboard
+        .readText()
+        .then((t) => {
+          if (t && ptyIdRef.current !== null)
+            void invoke("pty_write", { id: ptyIdRef.current, data: t });
+        })
+        .catch(() => {});
+    };
+    host.addEventListener("mouseup", () => {
+      copySelection();
+    });
     term.attachCustomKeyEventHandler((e) => {
       if (e.type !== "keydown") return true;
-      if (e.ctrlKey && e.shiftKey && (e.key === "C" || e.key === "c")) {
+      const isC = e.key === "C" || e.key === "c";
+      const isV = e.key === "V" || e.key === "v";
+      // Ctrl+Shift+C / Ctrl+Shift+V — explicit copy/paste.
+      if (e.ctrlKey && e.shiftKey && isC) {
         copySelection();
         return false; // handled — don't forward to the PTY
       }
-      if (e.ctrlKey && e.shiftKey && (e.key === "V" || e.key === "v")) {
-        void navigator.clipboard
-          .readText()
-          .then((t) => {
-            if (t && ptyIdRef.current !== null)
-              void invoke("pty_write", { id: ptyIdRef.current, data: t });
-          })
-          .catch(() => {});
+      if (e.ctrlKey && e.shiftKey && isV) {
+        paste();
+        return false;
+      }
+      // Plain Ctrl+C — copy only if something is selected, then clear it so the
+      // next Ctrl+C sends SIGINT. No selection → forward to the PTY (interrupt).
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && isC) {
+        if (copySelection()) {
+          term.clearSelection();
+          return false;
+        }
+        return true;
+      }
+      // Plain Ctrl+V — paste. (Ctrl+V's readline "verbatim insert" is rarely
+      // used and worth trading for a native paste shortcut.)
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && isV) {
+        paste();
         return false;
       }
       return true;
