@@ -232,6 +232,17 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
     [id, data.cwd, data.activeWorktree, addTerminalNode, updateNodeLabel]
   );
 
+  // Open a plain shell terminal (no agent) in the group's active worktree cwd.
+  // No command/args → usePty spawns the default shell; no color → status-dot node.
+  const openPlainTerminal = useCallback(() => {
+    const wtPath = data.activeWorktree ?? data.cwd;
+    const nodeId = addTerminalNode(id, null, wtPath, undefined, [
+      ["TURBO_GROUP_ID", id],
+      ["TURBO_WORKTREE_CWD", wtPath],
+    ]);
+    updateNodeLabel(nodeId, "Terminal");
+  }, [id, data.cwd, data.activeWorktree, addTerminalNode, updateNodeLabel]);
+
   const cwdDisplay = data.cwd ? data.cwd.replace(/^\/home\/[^/]+/, "~") : "";
 
   return (
@@ -409,6 +420,17 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           }}
         >
           + Criar agente
+        </button>
+        <button
+          type="button"
+          className="group-frame__create group-frame__create--ghost"
+          onClick={(e) => {
+            e.stopPropagation();
+            openPlainTerminal();
+          }}
+          title="Abrir um terminal comum (shell) neste grupo"
+        >
+          + Terminal
         </button>
       </aside>
 

@@ -349,6 +349,18 @@
   filter: brightness(1.08);
 }
 
+/* Secondary "+ Terminal" action: outline style so it reads below the primary. */
+.group-frame__create--ghost {
+  margin-top: 6px;
+  background: transparent;
+  color: var(--accent, #6ea8fe);
+}
+
+.group-frame__create--ghost:hover {
+  background: color-mix(in srgb, var(--accent, #6ea8fe) 14%, transparent);
+  filter: none;
+}
+
 /* Body: transparent so --group-bg of the root shows through */
 .group-frame__body {
   flex: 1;
