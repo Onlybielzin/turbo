@@ -9,7 +9,6 @@ import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useCanvasStore } from "./store";
-import { checkForUpdates } from "../updater";
 import "./Toolbar.css";
 
 type CliStatus = { claude: boolean; codex: boolean };
@@ -17,16 +16,6 @@ type CliStatus = { claude: boolean; codex: boolean };
 export function Toolbar() {
   const addGroup = useCanvasStore((s) => s.addGroup);
   const [status, setStatus] = useState<CliStatus>({ claude: false, codex: false });
-  const [checking, setChecking] = useState(false);
-
-  const handleUpdate = useCallback(async () => {
-    setChecking(true);
-    try {
-      await checkForUpdates(true);
-    } finally {
-      setChecking(false);
-    }
-  }, []);
 
   // Poll CLI availability so the top menu reflects what's usable.
   useEffect(() => {
@@ -75,15 +64,6 @@ export function Toolbar() {
         onClick={handleNewGroup}
       >
         + Novo grupo
-      </button>
-      <button
-        type="button"
-        className="canvas-toolbar__btn"
-        onClick={handleUpdate}
-        disabled={checking}
-        title="Verificar e instalar atualizações do Turbo"
-      >
-        {checking ? "Verificando…" : "↻ Atualizar"}
       </button>
     </div>
   );
