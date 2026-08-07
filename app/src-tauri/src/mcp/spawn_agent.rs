@@ -47,6 +47,10 @@ pub fn run_in_pty_blocking(
         cmd.env(k, v);
     }
     cmd.env("TERM", "xterm-256color");
+    // Use system libs, not the ones bundled in Turbo's AppImage mount (see
+    // platform::sanitize_appimage_env) — otherwise the spawned `claude`/`codex`
+    // and any tool it runs inherit a broken LD_LIBRARY_PATH.
+    crate::platform::sanitize_appimage_env(&mut cmd);
 
     let mut child = pair.slave.spawn_command(cmd)?;
     // Drop slave so the master sees EOF when the child exits.

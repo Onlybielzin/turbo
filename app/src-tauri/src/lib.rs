@@ -125,6 +125,9 @@ fn pty_spawn(
         }
     }
     cmd.env("TERM", "xterm-256color");
+    // Drop AppImage-injected library paths so `cargo`/`git`/`npm` run in this
+    // terminal use system libs, not the ones bundled in Turbo's AppImage mount.
+    platform::sanitize_appimage_env(&mut cmd);
     if let Some(pairs) = env {
         for [k, v] in pairs {
             cmd.env(k, v);
