@@ -4,7 +4,9 @@
  *
  * - Clicking a tab pans/zooms the canvas to frame that group (fitView).
  * - Ctrl+1..9 jumps to the Nth group.
- * - Alt+Tab / Alt+Shift+Tab cycles to the next / previous group.
+ * - Alt+Tab / Alt+Shift+Tab, Ctrl+E / Ctrl+Q, or Ctrl+→ / Ctrl+← cycles to the
+ *   next / previous group (tab order).
+ * - Ctrl+↑ / Ctrl+↓ jumps to the spatially nearest group above / below.
  * - Auto-grid button / Ctrl+G lays all groups out in a neat aligned grid.
  *
  * Shortcuts are captured on window (capture phase) so they work even while a
@@ -12,8 +14,16 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReactFlow } from "@xyflow/react";
-import { useCanvasStore, GroupNodeData } from "./store";
+import { useCanvasStore, GroupNodeData, AppNode } from "./store";
 import "./GroupTabs.css";
+
+/** Center point of a group node (measured size > style size > default 1120×780). */
+function groupCenter(n: AppNode): { x: number; y: number } {
+  const measured = (n as { measured?: { width?: number; height?: number } }).measured;
+  const w = measured?.width ?? (typeof n.style?.width === "number" ? n.style.width : 1120);
+  const h = measured?.height ?? (typeof n.style?.height === "number" ? n.style.height : 780);
+  return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
+}
 
 export function GroupTabs() {
   const nodes = useCanvasStore((s) => s.nodes);
@@ -38,6 +48,52 @@ export function GroupTabs() {
     requestAnimationFrame(() => void fitView({ duration: 500, padding: 0.12 }));
   }, [autoGridGroups, fitView]);
 
+  // Cycle focus to the next (dir=+1) or previous (dir=-1) group, wrapping around.
+  const cycleGroup = useCallback(
+    (dir: 1 | -1) => {
+      const gs = useCanvasStore.getState().nodes.filter((n) => n.type === "group");
+      if (gs.length === 0) return;
+      const cur = gs.findIndex((g) => g.id === activeIdRef.current);
+      const count = gs.length;
+      const nextIdx = cur < 0 ? (dir === 1 ? 0 : count - 1) : (cur + dir + count) % count;
+      focusGroup(gs[nextIdx].id);
+    },
+    [focusGroup]
+  );
+
+  // Focus the spatially nearest group above (dir="up") or below (dir="down") the
+  // active one — by canvas position, not tab order. No wrap: stops at the edge.
+  const focusSpatial = useCallback(
+    (dir: "up" | "down") => {
+      const gs = useCanvasStore.getState().nodes.filter((n) => n.type === "group");
+      if (gs.length === 0) return;
+      const cur = gs.find((g) => g.id === activeIdRef.current);
+      if (!cur) {
+        focusGroup(gs[0].id);
+        return;
+      }
+      const c = groupCenter(cur);
+      const sign = dir === "up" ? -1 : 1;
+      let best: AppNode | null = null;
+      let bestDist = Infinity;
+      for (const g of gs) {
+        if (g.id === cur.id) continue;
+        const gc = groupCenter(g);
+        const dy = gc.y - c.y;
+        // Must lie in the requested vertical direction (with a small deadzone).
+        if (Math.abs(dy) < 1 || Math.sign(dy) !== sign) continue;
+        const dx = gc.x - c.x;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = g;
+        }
+      }
+      if (best) focusGroup(best.id);
+    },
+    [focusGroup]
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Ctrl+G → auto-grid layout
@@ -47,17 +103,31 @@ export function GroupTabs() {
         doAutoGrid();
         return;
       }
+      // Ctrl+E / Ctrl+→ → next group; Ctrl+Q / Ctrl+← → previous group.
+      // (Arrows use Ctrl so a focused terminal still gets plain arrow keys.)
+      if (e.ctrlKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
+        const isNext = k === "e" || k === "arrowright";
+        const isPrev = k === "q" || k === "arrowleft";
+        if (isNext || isPrev) {
+          e.preventDefault();
+          e.stopPropagation();
+          cycleGroup(isNext ? 1 : -1);
+          return;
+        }
+        if (k === "arrowup" || k === "arrowdown") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusSpatial(k === "arrowup" ? "up" : "down");
+          return;
+        }
+      }
       // Alt+Tab / Alt+Shift+Tab → next / previous group
       if (e.altKey && e.key === "Tab") {
-        const gs = useCanvasStore.getState().nodes.filter((n) => n.type === "group");
-        if (gs.length === 0) return;
+        if (useCanvasStore.getState().nodes.every((n) => n.type !== "group")) return;
         e.preventDefault();
         e.stopPropagation();
-        const cur = gs.findIndex((g) => g.id === activeIdRef.current);
-        const count = gs.length;
-        const nextIdx =
-          cur < 0 ? 0 : e.shiftKey ? (cur - 1 + count) % count : (cur + 1) % count;
-        focusGroup(gs[nextIdx].id);
+        cycleGroup(e.shiftKey ? -1 : 1);
         return;
       }
       // Ctrl+1..9 → jump to group N
@@ -73,7 +143,7 @@ export function GroupTabs() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [focusGroup, doAutoGrid]);
+  }, [focusGroup, doAutoGrid, cycleGroup, focusSpatial]);
 
   if (groups.length === 0) return null;
 
