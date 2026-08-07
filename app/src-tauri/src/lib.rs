@@ -107,7 +107,16 @@ fn pty_spawn(
     let pair = pty_system.openpty(size).map_err(|e| e.to_string())?;
 
     let shell = command.unwrap_or_else(platform::default_shell);
-    let mut cmd = CommandBuilder::new(shell);
+    // Resolve the program the way the OS actually would. On Windows this finds
+    // `.cmd`/`.exe` shims (portable-pty's CreateProcess only auto-appends `.exe`)
+    // and, for `.cmd`/`.bat` scripts, returns `cmd.exe /C <path>` as the real
+    // spawn target so the shim is actually runnable. On Unix it's an unchanged
+    // passthrough.
+    let (program, prefix_args) = platform::resolve_command(&shell);
+    let mut cmd = CommandBuilder::new(program);
+    for a in prefix_args {
+        cmd.arg(a);
+    }
     if let Some(a) = args {
         cmd.args(a);
     }
@@ -376,19 +385,11 @@ pub struct CliStatus {
     codex: bool,
 }
 
-/// Search PATH for an executable file named `bin`.
-fn which(bin: &str) -> bool {
-    let Some(paths) = std::env::var_os("PATH") else {
-        return false;
-    };
-    std::env::split_paths(&paths).any(|dir| dir.join(bin).is_file())
-}
-
 #[tauri::command]
 fn cli_status() -> CliStatus {
     CliStatus {
-        claude: which("claude"),
-        codex: which("codex"),
+        claude: platform::command_exists("claude"),
+        codex: platform::command_exists("codex"),
     }
 }
 
