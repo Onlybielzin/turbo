@@ -179,9 +179,13 @@ pub fn session_usage(session_id: &str) -> UsageReport {
         }
     }
 
+    // Headline token count = "new work": fresh input + output + cache writes.
+    // cache_read is the (cheap, 0.1x-priced) re-read of already-cached context —
+    // it dominates the raw total (often >90%) and balloons every turn, which made
+    // a single "oi" read as tens of thousands of tokens. Exclude it from the
+    // headline; it still lives in cache_read_input_tokens and is priced into cost.
     report.total_tokens = report.input_tokens
         + report.output_tokens
-        + report.cache_creation_input_tokens
-        + report.cache_read_input_tokens;
+        + report.cache_creation_input_tokens;
     report
 }

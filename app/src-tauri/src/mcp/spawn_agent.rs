@@ -36,6 +36,13 @@ pub fn run_in_pty_blocking(
     if let Some(dir) = &cwd {
         cmd.cwd(dir);
     }
+    // Fresh top-level Claude session: drop any inherited Claude Code env so the
+    // spawned agent writes its own usage transcript (see pty_spawn in lib.rs).
+    for (k, _) in std::env::vars() {
+        if k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_") {
+            cmd.env_remove(&k);
+        }
+    }
     for (k, v) in &extra_env {
         cmd.env(k, v);
     }

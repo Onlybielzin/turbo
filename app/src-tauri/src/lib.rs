@@ -114,6 +114,16 @@ fn pty_spawn(
     if let Some(dir) = cwd {
         cmd.cwd(dir);
     }
+    // Strip any inherited Claude Code session env so the `claude` we launch is a
+    // fresh top-level session. If Turbo itself is started from inside a Claude
+    // session (CLAUDECODE / CLAUDE_CODE_SESSION_ID / CLAUDE_CODE_CHILD_SESSION),
+    // the child claude would treat itself as a nested subagent and skip writing
+    // its usage transcript — making token/cost accounting read zero.
+    for (k, _) in std::env::vars() {
+        if k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_") {
+            cmd.env_remove(&k);
+        }
+    }
     cmd.env("TERM", "xterm-256color");
     if let Some(pairs) = env {
         for [k, v] in pairs {
