@@ -2,19 +2,23 @@
  * Mascot — the group's evolving pixel wizard, shown on the level card.
  *
  * States:
- *  - working=true  → the level's "channeling" idle (magic scales with level).
- *  - working=false → cycles the cozy REST idles (breathe, coffee, cat, dragon
- *    egg, nap).
+ *  - working=true  → cycles the WORK ("channeling") idles of EVERY level
+ *    reached within the current tier (nv1..nv9 at level 9, nv11..nv19 at 19).
+ *  - working=false → cycles those same tier idles plus the form's cozy REST
+ *    idles (breathe, coffee, cat, dragon egg, nap, …).
  *  - evolving      → on crossing a form boundary (every 10 levels) plays the
- *    one-shot transformation, then settles into the new form's idle.
+ *    one-shot transformation, then settles into the new tier's pool. The
+ *    evolution sheet is NEVER part of the normal loop.
  *
- * Idles play in PING-PONG (0→last→0) for a seamless loop; the evolution plays
- * forward once and holds the last frame until it ends.
+ * Idles play in PING-PONG (0→last→0) for a seamless loop. The animation is
+ * only swapped for another one from the pool at the END of a ping-pong cycle
+ * (frame back at 0), so there is no visible restart / jump mid-animation. The
+ * evolution plays forward once and holds the last frame until it ends.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  workSheet,
-  restSheets,
+  workPool,
+  restPool,
   evolveSheet,
   formIndex,
   FRAME_W,
@@ -33,20 +37,11 @@ interface MascotProps {
 }
 
 const FPS = 12;
-const REST_SWITCH_MS = 7000;
 const EVOLVE_MS = 1600;
+/** How many full ping-pong cycles a sheet plays before swapping to another. */
+const LOOPS_BEFORE_SWITCH = 2;
 
 export function Mascot({ level, working = false, size = 76 }: MascotProps) {
-  // Advance the REST animation by WALL-CLOCK time so it keeps cycling even
-  // though GroupFrame re-renders (token polling) would reset a plain counter.
-  const [, tick] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => tick((x) => (x + 1) % 1_000_000), 1000);
-    return () => clearInterval(t);
-  }, []);
-  const rest = restSheets(formIndex(level));
-  const restIdx = Math.floor(Date.now() / REST_SWITCH_MS) % rest.length;
-
   // One-shot evolution when the form changes (level crosses a x0→x1 boundary).
   const [evolveSrc, setEvolveSrc] = useState<string | null>(null);
   const prevLevel = useRef(Math.floor(level) || 1);
@@ -64,17 +59,46 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
       prevLevel.current = lv;
     }
   }, [level]);
-
   const oneShot = evolveSrc !== null;
-  const sheet = evolveSrc ?? (working ? workSheet(level) : rest[restIdx % rest.length]);
 
-  // Frame ticker: ping-pong for idles, forward-once for the evolution.
+  // Pool of sheets to cycle for the current state. WORK and REST both cycle the
+  // tier's level idles; REST also folds in the form's cozy idles. Kept in a ref
+  // so the frame ticker always reads the latest pool (e.g. a newly reached
+  // level enters the rotation) without the ticker restarting.
+  const pool = useMemo<readonly string[]>(() => {
+    if (evolveSrc) return [evolveSrc];
+    return working ? workPool(level) : restPool(level);
+  }, [evolveSrc, working, level]);
+  const poolRef = useRef(pool);
+  poolRef.current = pool;
+
+  // The sheet currently playing.
+  const [sheet, setSheet] = useState<string>(() => pool[0]);
+
+  // On a real mode change (start/stop working) switch to the new pool without
+  // touching the frame, so the current idle flows into the next one seamlessly.
+  useEffect(() => {
+    if (!poolRef.current.includes(sheet)) setSheet(poolRef.current[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [working]);
+
+  // Frame ticker: ping-pong for idles, forward-once for the evolution. It never
+  // depends on `sheet`, so a swap only ever happens at frame 0 (the natural end
+  // of a ping-pong cycle) → no visible restart.
   const [frame, setFrame] = useState(0);
   const dir = useRef(1);
+  const loops = useRef(0);
+
+  // Enter/exit evolution: start a clean forward pass on the right sheet.
   useEffect(() => {
     setFrame(0);
     dir.current = 1;
-    const t = setInterval(() => {
+    loops.current = 0;
+    setSheet(evolveSrc ?? poolRef.current[0]);
+  }, [evolveSrc]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
       setFrame((f) => {
         if (oneShot) return Math.min(f + 1, FRAME_COUNT - 1);
         let nf = f + dir.current;
@@ -82,14 +106,30 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
           nf = FRAME_COUNT - 1;
           dir.current = -1;
         } else if (nf <= 0) {
+          // Completed a full ping-pong cycle (back at frame 0): the safe point
+          // to swap in another sheet without a visible jump.
           nf = 0;
           dir.current = 1;
+          loops.current += 1;
+          if (loops.current >= LOOPS_BEFORE_SWITCH) {
+            loops.current = 0;
+            const p = poolRef.current;
+            if (p.length > 1) {
+              setSheet((cur) => {
+                let next = cur;
+                for (let i = 0; i < 8 && next === cur; i++) {
+                  next = p[Math.floor(Math.random() * p.length)];
+                }
+                return next;
+              });
+            }
+          }
         }
         return nf;
       });
     }, 1000 / FPS);
-    return () => clearInterval(t);
-  }, [sheet, oneShot]);
+    return () => clearInterval(id);
+  }, [oneShot]);
 
   const scale = size / FRAME_H;
 

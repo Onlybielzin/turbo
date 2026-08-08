@@ -142,6 +142,31 @@ export function restSheets(formIdx: number): readonly string[] {
   return REST_BY_FORM[i];
 }
 
+/** First level (1-indexed) of the tier/form containing `level`: form 0 → 1,
+ * form 1 → 11, … form 4 → 41. */
+export function formBaseLevel(level: number): number {
+  return formIndex(level) * 10 + 1;
+}
+
+/** WORK ("channeling") sheets for every level reached within the current tier,
+ * from the tier's base level up to `level`. Nv 9 → [nv1..nv9]; nv 19 →
+ * [nv11..nv19]. The mascot cycles these instead of showing only the exact
+ * level, so lower-level animations of the tier keep playing as it grows.
+ * Never includes EVOLVE_SHEETS — evolution stays a one-shot, out of the loop. */
+export function workPool(level: number): readonly string[] {
+  const lv = Math.min(Math.max(Math.floor(level) || 1, 1), WORK_SHEETS.length);
+  const base = formBaseLevel(lv);
+  const out: string[] = [];
+  for (let l = base; l <= lv; l++) out.push(WORK_SHEETS[l - 1]);
+  return out;
+}
+
+/** REST pool: every level's sheet within the tier PLUS the form's cozy idles,
+ * so an idle mascot varies across the tier's poses and its cozy moments. */
+export function restPool(level: number): readonly string[] {
+  return [...workPool(level), ...restSheets(formIndex(level))];
+}
+
 /** The transformation sheet to play when evolving INTO the given form index
  * (1..4 → forms 2..5). Returns null for form 0 (no evolution into Aprendiz). */
 export function evolveSheet(targetFormIndex: number): string | null {
