@@ -200,13 +200,25 @@ export function usePty({
       return false;
     };
     const paste = () => {
+      // Text pastes as-is. When the clipboard holds an IMAGE, WebKitGTK's
+      // navigator.clipboard can't hand us the bytes (readText resolves empty or
+      // rejects) — so forward a raw Ctrl+V (0x16) to the PTY and let the program
+      // running there (e.g. Claude Code) read the image from the Wayland clipboard
+      // itself via wl-paste. This is why image paste never worked: the old handler
+      // only did readText() and dropped anything that wasn't text.
+      const sendCtrlV = () => {
+        if (ptyIdRef.current !== null)
+          void invoke("pty_write", { id: ptyIdRef.current, data: "\x16" });
+      };
       void navigator.clipboard
         .readText()
         .then((t) => {
-          if (t && ptyIdRef.current !== null)
+          if (ptyIdRef.current === null) return;
+          if (t && t.length > 0)
             void invoke("pty_write", { id: ptyIdRef.current, data: t });
+          else sendCtrlV(); // empty → likely an image: let the PTY program paste it
         })
-        .catch(() => {});
+        .catch(sendCtrlV); // readText rejected (non-text clipboard) → forward Ctrl+V
     };
     host.addEventListener("mouseup", () => {
       copySelection();
