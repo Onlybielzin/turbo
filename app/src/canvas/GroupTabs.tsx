@@ -4,9 +4,11 @@
  *
  * - Clicking a tab pans/zooms the canvas to frame that group (fitView).
  * - Ctrl+1..9 jumps to the Nth group.
- * - Alt+Tab / Alt+Shift+Tab, Ctrl/Alt+E / Ctrl/Alt+Q, or Ctrl/Alt+→ / Ctrl/Alt+←
- *   cycles to the next / previous group (tab order).
- * - Ctrl/Alt+↑ / Ctrl/Alt+↓ jumps to the spatially nearest group above / below.
+ * - Alt+Tab / Alt+Shift+Tab, Ctrl+E / Ctrl+Q, or Ctrl+→ / Ctrl+← cycles to the
+ *   next / previous group (tab order); Ctrl+↑ / Ctrl+↓ jumps to the spatially
+ *   nearest group above / below.
+ * - Alt+E / Alt+Q / Alt+→ / Alt+← cycles terminals of the focused group; Alt+↑ /
+ *   Alt+↓ jumps to the nearest terminal above / below — framing and focusing it.
  * - Auto-grid button / Ctrl+G lays all groups out in a neat aligned grid.
  * - Alt+G lays the focused group's terminals out in a grid with no overlap.
  *
@@ -27,6 +29,16 @@ function groupCenter(n: AppNode): { x: number; y: number } {
   return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
 }
 
+/** Center point of any node (measured > style > terminal default 780×540). Used
+ *  for spatial terminal navigation; positions are parent-relative but terminals
+ *  of the same group share a parent, so they're directly comparable. */
+function nodeCenter(n: AppNode): { x: number; y: number } {
+  const measured = (n as { measured?: { width?: number; height?: number } }).measured;
+  const w = measured?.width ?? (typeof n.style?.width === "number" ? n.style.width : 780);
+  const h = measured?.height ?? (typeof n.style?.height === "number" ? n.style.height : 540);
+  return { x: n.position.x + w / 2, y: n.position.y + h / 2 };
+}
+
 export function GroupTabs() {
   const nodes = useCanvasStore((s) => s.nodes);
   const autoGridGroups = useCanvasStore((s) => s.autoGridGroups);
@@ -35,6 +47,8 @@ export function GroupTabs() {
   const { fitView } = useReactFlow();
   const [activeId, setActiveId] = useState<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
+  // Last terminal focused via Alt navigation (for cycling / spatial nav).
+  const activeTermRef = useRef<string | null>(null);
 
   const focusGroup = useCallback(
     (groupId: string) => {
@@ -113,6 +127,94 @@ export function GroupTabs() {
     [focusGroup]
   );
 
+  // Focus a terminal: frame it and hand keyboard focus to its xterm so typing
+  // goes there. Terminals hibernate off-screen, so focus after the pan settles.
+  const focusTerminal = useCallback(
+    (termId: string) => {
+      activeTermRef.current = termId;
+      void fitView({ nodes: [{ id: termId }], duration: 300, padding: 0.3, maxZoom: 1 });
+      window.setTimeout(() => {
+        const el = document.querySelector(
+          `.react-flow__node[data-id="${CSS.escape(termId)}"] .xterm-helper-textarea`
+        ) as HTMLTextAreaElement | null;
+        el?.focus();
+      }, 340);
+    },
+    [fitView]
+  );
+
+  // Terminals eligible for Alt navigation: STRICTLY those of the current group —
+  // Alt-nav never crosses into another group. "Current group" follows your real
+  // focus, honoring BOTH cases: the terminal you're actually in right now (DOM
+  // focus) AND the group you framed. Priority: the group of the focused node
+  // (terminal or group), else the framed group, else the last-focused terminal's
+  // group, else the first group with terminals. Returns [] if none.
+  const groupTerminals = useCallback((): AppNode[] => {
+    const st = useCanvasStore.getState().nodes;
+    const parentOf = (id: string | null): string | null =>
+      id ? st.find((n) => n.id === id)?.parentId ?? null : null;
+
+    // Group of whatever currently holds DOM focus (a terminal you clicked into,
+    // or a node) — so context tracks where you really are, not just the last tab.
+    let domGid: string | null = null;
+    const active = document.activeElement as HTMLElement | null;
+    const nodeEl = active?.closest?.(".react-flow__node[data-id]") as HTMLElement | null;
+    const domId = nodeEl?.getAttribute("data-id") ?? null;
+    if (domId) {
+      const n = st.find((x) => x.id === domId);
+      domGid = n?.type === "group" ? n.id : n?.parentId ?? null;
+    }
+
+    const gid =
+      domGid ??
+      activeIdRef.current ??
+      parentOf(activeTermRef.current) ??
+      st.find((n) => n.type === "terminal")?.parentId ??
+      null;
+    if (!gid) return [];
+    return st.filter((n) => n.type === "terminal" && n.parentId === gid);
+  }, []);
+
+  // Cycle terminal focus to the next (dir=+1) / previous (dir=-1), wrapping.
+  const cycleTerminal = useCallback(
+    (dir: 1 | -1) => {
+      const terms = groupTerminals();
+      if (terms.length === 0) return;
+      const cur = terms.findIndex((t) => t.id === activeTermRef.current);
+      const count = terms.length;
+      const nextIdx = cur < 0 ? (dir === 1 ? 0 : count - 1) : (cur + dir + count) % count;
+      focusTerminal(terms[nextIdx].id);
+    },
+    [groupTerminals, focusTerminal]
+  );
+
+  // Focus the spatially nearest terminal above / below the active one. No wrap.
+  const focusSpatialTerminal = useCallback(
+    (dir: "up" | "down") => {
+      const terms = groupTerminals();
+      if (terms.length === 0) return;
+      const cur = terms.find((t) => t.id === activeTermRef.current) ?? terms[0];
+      const c = nodeCenter(cur);
+      const sign = dir === "up" ? -1 : 1;
+      let best: AppNode | null = null;
+      let bestDist = Infinity;
+      for (const t of terms) {
+        if (t.id === cur.id) continue;
+        const tc = nodeCenter(t);
+        const dy = tc.y - c.y;
+        if (Math.abs(dy) < 1 || Math.sign(dy) !== sign) continue;
+        const dx = tc.x - c.x;
+        const dist = dx * dx + dy * dy;
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = t;
+        }
+      }
+      if (best) focusTerminal(best.id);
+    },
+    [groupTerminals, focusTerminal]
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { bindings } = useShortcutsStore.getState();
@@ -130,10 +232,10 @@ export function GroupTabs() {
         doGridTerminals();
         return;
       }
-      // Ctrl/Alt+E / Ctrl/Alt+→ → next group; Ctrl/Alt+Q / Ctrl/Alt+← → previous.
-      // Ctrl/Alt+↑ / Ctrl/Alt+↓ → spatially nearest group above / below.
-      // (A modifier is required so a focused terminal still gets plain keys.)
-      if ((e.ctrlKey || e.altKey) && !e.metaKey) {
+      // Ctrl+E / Ctrl+→ → next group; Ctrl+Q / Ctrl+← → previous group;
+      // Ctrl+↑ / Ctrl+↓ → spatially nearest group above / below.
+      // (Ctrl so a focused terminal still gets plain arrow keys.)
+      if (e.ctrlKey && !e.altKey && !e.metaKey) {
         const k = e.key.toLowerCase();
         const isNextArrow = k === "e" || k === "arrowright";
         const isPrevArrow = k === "q" || k === "arrowleft";
@@ -147,6 +249,26 @@ export function GroupTabs() {
           e.preventDefault();
           e.stopPropagation();
           focusSpatial(k === "arrowup" ? "up" : "down");
+          return;
+        }
+      }
+      // Alt+E / Alt+→ → next terminal; Alt+Q / Alt+← → previous terminal;
+      // Alt+↑ / Alt+↓ → spatially nearest terminal above / below — all within the
+      // focused group. Frames the terminal and gives it keyboard focus.
+      if (e.altKey && !e.ctrlKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
+        const isNextArrow = k === "e" || k === "arrowright";
+        const isPrevArrow = k === "q" || k === "arrowleft";
+        if (isNextArrow || isPrevArrow) {
+          e.preventDefault();
+          e.stopPropagation();
+          cycleTerminal(isNextArrow ? 1 : -1);
+          return;
+        }
+        if (k === "arrowup" || k === "arrowdown") {
+          e.preventDefault();
+          e.stopPropagation();
+          focusSpatialTerminal(k === "arrowup" ? "up" : "down");
           return;
         }
       }
@@ -173,7 +295,15 @@ export function GroupTabs() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [focusGroup, doAutoGrid, doGridTerminals, cycleGroup, focusSpatial]);
+  }, [
+    focusGroup,
+    doAutoGrid,
+    doGridTerminals,
+    cycleGroup,
+    focusSpatial,
+    cycleTerminal,
+    focusSpatialTerminal,
+  ]);
 
   if (groups.length === 0) return null;
 
