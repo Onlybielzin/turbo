@@ -240,6 +240,8 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
           // Stable identity persisted for restore recomposition (see prepareRestore).
           agent.model,
           agent.prompt || undefined,
+          // Link the terminal back to its AgentDef so renames re-sync the label.
+          agent.id,
         );
         updateNodeLabel(nodeId, agent.name);
       } catch (err) {

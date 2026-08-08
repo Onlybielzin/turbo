@@ -45,6 +45,9 @@ export interface TerminalNodeData extends Record<string, unknown> {
   env?: [string, string][];
   /** Accent color of the agent this terminal runs (from its AgentDef). */
   color?: string;
+  /** Stable id of the AgentDef this terminal was launched from. Links the
+   *  terminal back to its agent so renaming the agent re-syncs label/color. */
+  agentId?: string;
   /** Pinned Claude session id — used to read this terminal's token/cost usage. */
   sessionId?: string;
   /** Absolute path of the git worktree this terminal runs inside. */
@@ -207,7 +210,7 @@ interface CanvasState {
 
   // Group management
   addGroup: (cwd: string) => string; // returns group node id
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string) => string;
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string, agentId?: string) => string;
   /** Replace a terminal's launch command+args (used by restore to swap in the
    *  freshly-composed `resume` command before the PTY spawns). */
   setTerminalSpawn: (nodeId: string, command: string, args: string[]) => void;
@@ -517,7 +520,7 @@ export const useCanvasStore = create<CanvasState>()(
     return groupId;
   },
 
-  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string): string => {
+  addTerminalNode: (groupId: string, ptyId: number | null, cwd?: string, command?: string, env?: [string, string][], args?: string[], color?: string, sessionId?: string, worktree?: string, agent?: string, role?: string, agentId?: string): string => {
     const { nodes } = get();
     const nodeId = `terminal-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -555,6 +558,7 @@ export const useCanvasStore = create<CanvasState>()(
         worktree,
         agent,
         role,
+        agentId,
       } as TerminalNodeData,
       style: {
         width: 780,
@@ -599,15 +603,25 @@ export const useCanvasStore = create<CanvasState>()(
   updateAgentDef: (groupId: string, def: AgentDef): void => {
     set((state) => ({
       nodes: state.nodes.map((n) => {
-        if (n.id !== groupId) return n;
-        const data = n.data as GroupNodeData;
-        return {
-          ...n,
-          data: {
-            ...data,
-            agents: (data.agents ?? []).map((a) => (a.id === def.id ? def : a)),
-          },
-        };
+        // Update the saved AgentDef on the group node.
+        if (n.id === groupId) {
+          const data = n.data as GroupNodeData;
+          return {
+            ...n,
+            data: {
+              ...data,
+              agents: (data.agents ?? []).map((a) => (a.id === def.id ? def : a)),
+            },
+          };
+        }
+        // Re-sync any open terminals launched from this agent. Their label and
+        // color are denormalized from the AgentDef at open time, so a rename
+        // (or color change) must propagate to the live terminal nodes.
+        if (n.type === "terminal" && (n.data as TerminalNodeData).agentId === def.id) {
+          const data = n.data as TerminalNodeData;
+          return { ...n, data: { ...data, label: def.name, color: def.color } };
+        }
+        return n;
       }),
     }));
   },
