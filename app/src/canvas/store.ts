@@ -229,7 +229,8 @@ interface CanvasState {
     groupId: string;
     parentNodeId: string;
     label: string;
-    childPtyId: string | null;
+    /** Real PtyManager id of the spawned child — the node attaches to its live stream. */
+    childPtyId: number;
   }) => string;
   removeNode: (nodeId: string) => void;
   /** Open (or focus) a ViewerNode for a file inside a group. Deduped by groupId+filePath.
@@ -639,7 +640,7 @@ export const useCanvasStore = create<CanvasState>()(
     }));
   },
 
-  addChildNode: ({ groupId, parentNodeId, label, childPtyId: _childPtyId }) => {
+  addChildNode: ({ groupId, parentNodeId, label, childPtyId }) => {
     const { nodes, edges } = get();
     const nodeId = `terminal-child-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -665,10 +666,11 @@ export const useCanvasStore = create<CanvasState>()(
       position: pos,
       data: {
         label,
-        // childPtyId is a UUID string from the MCP handler — not a PtyManager id.
-        // Child nodes are read-only display nodes (output returns to the parent via
-        // MCP response, not xterm). Keep ptyId null so usePty doesn't try to attach.
-        ptyId: null,
+        // childPtyId is the real PtyManager id of the spawned child. The node
+        // attaches to its live output stream (child_output events) so the subagent
+        // is visible working on the canvas. No `command` → usePty won't spawn; it
+        // attaches via `attachChildPtyId` instead.
+        ptyId: childPtyId,
         status: "running" as NodeStatus,
       } as TerminalNodeData,
       style: {

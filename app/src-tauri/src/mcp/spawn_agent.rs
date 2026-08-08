@@ -17,6 +17,10 @@ use std::io::Read;
 ///
 /// This is meant to be called inside `tokio::task::spawn_blocking`.
 /// It is synchronous and must not be called directly from an async context.
+///
+/// NOTE: superseded by `PtyManager::spawn_child_streaming` (live child terminals);
+/// kept for reference / potential headless use.
+#[allow(dead_code)]
 pub fn run_in_pty_blocking(
     command: String,
     args: Vec<String>,

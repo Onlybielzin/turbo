@@ -43,6 +43,12 @@ interface UsePtyOptions {
    * already running — prevents the duplicate-spawn bug.
    */
   existingPtyId?: number | null;
+  /**
+   * When set, this node is a spawned-agent child: skip pty_spawn and render the
+   * live output streamed from the backend via `child_output` events for this pty
+   * id (read-only). Lets the subagent be visible working on the canvas.
+   */
+  attachChildPtyId?: number | null;
 }
 
 interface UsePtyResult {
@@ -63,6 +69,7 @@ export function usePty({
   onStatusChange,
   onPtyReady,
   existingPtyId,
+  attachChildPtyId,
 }: UsePtyOptions): UsePtyResult {
   const ptyIdRef = useRef<number | null>(null);
   const disposedRef = useRef(false);
@@ -126,11 +133,17 @@ export function usePty({
       if (!vp) return 1;
       const t = getComputedStyle(vp).transform;
       if (!t || t === "none") return 1;
-      try {
-        return new DOMMatrixReadOnly(t).a || 1;
-      } catch {
-        return 1;
-      }
+      // Parse the scale factor from the computed transform MANUALLY instead of
+      // via `new DOMMatrixReadOnly(t)`: the string constructor is unreliable on
+      // WebKitGTK (this box's engine) and, when it throws, the old catch swallowed
+      // it and returned 1 — making canvasScale always report "no zoom", so the
+      // getCoords patch below became a no-op and selection landed on the wrong
+      // (higher) row at any zoom≠1. ReactFlow always emits `matrix(a,b,c,d,e,f)`
+      // (2D) where `a` is scaleX; matrix3d(...) puts scaleX first too.
+      const m = t.match(/matrix(?:3d)?\(([^)]+)\)/);
+      if (!m) return 1;
+      const a = parseFloat(m[1].split(",")[0]);
+      return Number.isFinite(a) && a > 0 ? a : 1;
     };
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -270,6 +283,9 @@ export function usePty({
       if (flushHandle === null) flushHandle = requestAnimationFrame(flush);
     };
 
+    // Cleanup handle for the child_output listener (spawned-agent child nodes).
+    let childOutputUnlisten: (() => void) | null = null;
+
     void (async () => {
       const spawnPty = async (cmd?: string, cmdArgs?: string[]) => {
         const spawnArgs: Record<string, unknown> = {
@@ -285,6 +301,27 @@ export function usePty({
       };
 
       try {
+        if (attachChildPtyId != null) {
+          // Spawned-agent child: don't spawn a PTY — attach to the live output
+          // stream the backend emits for this pty id so the subagent is visible
+          // working on the canvas (read-only; no input/resize forwarding).
+          ptyId = attachChildPtyId;
+          ptyIdRef.current = ptyId;
+          onPtyReady?.(ptyId);
+          const enc = new TextEncoder();
+          const unlisten = await listen<{ pty_id: number; data: string }>(
+            "child_output",
+            (event) => {
+              if (event.payload.pty_id !== attachChildPtyId) return;
+              markActivity(nodeId);
+              pending.push(Array.from(enc.encode(event.payload.data)));
+              if (flushHandle === null) flushHandle = requestAnimationFrame(flush);
+            }
+          );
+          if (disposedRef.current) unlisten();
+          else childOutputUnlisten = unlisten;
+          return;
+        }
         if (existingPtyId != null) {
           // Attach to the already-running PTY (e.g. parent agent from create_group).
           // We open a new output channel from the existing session so xterm renders output.
@@ -417,6 +454,7 @@ export function usePty({
       host.removeEventListener("mouseup", copySelection);
 
       void unlistenExit.then((f) => f());
+      if (childOutputUnlisten) childOutputUnlisten();
 
       if (ptyIdRef.current !== null) {
         // Kill the PTY regardless of whether we spawned it or attached to an existing one

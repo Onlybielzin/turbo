@@ -231,6 +231,9 @@ function GroupFrameInner({ id, data }: GroupFrameProps) {
             ["TURBO_GROUP_ID", id],
             ["TURBO_MCP_DEPTH", "0"],
             ["TURBO_AGENT", agent.model],
+            // Real display name, so the agent can identify itself as the sender
+            // in send_message (from = $TURBO_AGENT_NAME).
+            ["TURBO_AGENT_NAME", agent.name],
             ["TURBO_WORKTREE_CWD", wtPath],
           ],
           spawn.args,

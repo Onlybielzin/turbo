@@ -19,6 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::sync_channel;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::time::Instant;
 
 use portable_pty::{native_pty_system, ChildKiller, CommandBuilder, MasterPty, PtySize};
 use tauri::ipc::Channel;
@@ -39,6 +40,15 @@ pub struct ParentSpawn {
 
 // ─── PTY layer ────────────────────────────────────────────────────────────────
 
+/// Payload for the `child_output` event: a chunk of a spawned child agent's PTY
+/// output, streamed live to the canvas so the subagent is visible working. Keyed
+/// by `pty_id` so each child node renders only its own stream.
+#[derive(Clone, serde::Serialize)]
+struct ChildOutput {
+    pty_id: u32,
+    data: String,
+}
+
 /// One live PTY: the write side, the master (for resize) and a killer handle.
 struct PtySession {
     writer: Box<dyn Write + Send>,
@@ -47,6 +57,10 @@ struct PtySession {
     /// Accumulates all PTY output for MCP spawn_agent return path.
     #[allow(dead_code)]
     stdout_buf: Arc<Mutex<Vec<u8>>>,
+    /// Timestamp of the last byte read from this PTY. Used by `send_message` to
+    /// deliver a message only when the target agent is idle (no recent output),
+    /// so it isn't clobbered mid-generation.
+    last_activity: Arc<Mutex<Instant>>,
 }
 
 #[derive(Default)]
@@ -56,6 +70,140 @@ pub struct PtyManager {
 }
 
 impl PtyManager {
+    /// Write UTF-8 bytes to a live PTY's stdin (used by the MCP `send_message`
+    /// tool to deliver a message into another agent's terminal). Returns an error
+    /// string if the pty id is unknown or the write fails.
+    pub fn write(&self, id: u32, data: &str) -> Result<(), String> {
+        let mut map = self.sessions.lock().map_err(|_| "pty lock poisoned")?;
+        let session = map.get_mut(&id).ok_or("pty not found")?;
+        session
+            .writer
+            .write_all(data.as_bytes())
+            .map_err(|e| e.to_string())?;
+        session.writer.flush().map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Spawn a child agent in a real PTY registered in this manager, streaming its
+    /// output live to the canvas via the `child_output` event (so the subagent is
+    /// visible working) while ALSO accumulating every byte into a buffer that the
+    /// MCP `spawn_agent` tool returns to the parent when the child exits.
+    ///
+    /// Returns `(pty_id, stdout_buf, exit_rx)`. `exit_rx` resolves when the child
+    /// closes its PTY (EOF), letting the async caller await completion without
+    /// blocking. The session stays in the table (writable by `send_message`) until
+    /// explicitly killed.
+    pub fn spawn_child_streaming(
+        &self,
+        app: AppHandle,
+        command: String,
+        args: Vec<String>,
+        cwd: Option<String>,
+        extra_env: Vec<(String, String)>,
+    ) -> Result<(u32, Arc<Mutex<Vec<u8>>>, tokio::sync::oneshot::Receiver<()>), String> {
+        let pty_system = native_pty_system();
+        let pair = pty_system
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .map_err(|e| e.to_string())?;
+
+        let (program, prefix_args) = platform::resolve_command(&command);
+        let mut cmd = CommandBuilder::new(program);
+        for a in prefix_args {
+            cmd.arg(a);
+        }
+        cmd.args(&args);
+        if let Some(dir) = &cwd {
+            cmd.cwd(dir);
+        }
+        // Fresh top-level session: drop inherited Claude Code env (see pty_spawn).
+        for (k, _) in std::env::vars() {
+            if k == "CLAUDECODE" || k.starts_with("CLAUDE_CODE_") {
+                cmd.env_remove(&k);
+            }
+        }
+        cmd.env("TERM", "xterm-256color");
+        platform::sanitize_appimage_env(&mut cmd);
+        for (k, v) in &extra_env {
+            cmd.env(k, v);
+        }
+
+        let child = pair.slave.spawn_command(cmd).map_err(|e| e.to_string())?;
+        drop(pair.slave);
+
+        let master = pair.master;
+        let killer = child.clone_killer();
+        let mut reader = master.try_clone_reader().map_err(|e| e.to_string())?;
+        let writer = master.take_writer().map_err(|e| e.to_string())?;
+
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
+        let stdout_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+        let stdout_buf_reader = Arc::clone(&stdout_buf);
+        let last_activity: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
+        let last_activity_reader = Arc::clone(&last_activity);
+        let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<()>();
+
+        let app_reader = app.clone();
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 8192];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let chunk = &buf[..n];
+                        if let Ok(mut acc) = stdout_buf_reader.lock() {
+                            acc.extend_from_slice(chunk);
+                        }
+                        if let Ok(mut la) = last_activity_reader.lock() {
+                            *la = Instant::now();
+                        }
+                        let _ = app_reader.emit(
+                            "child_output",
+                            ChildOutput {
+                                pty_id: id,
+                                data: String::from_utf8_lossy(chunk).into_owned(),
+                            },
+                        );
+                    }
+                }
+            }
+            let _ = app_reader.emit("pty_exit", id);
+            let _ = exit_tx.send(());
+        });
+
+        std::thread::spawn(move || {
+            let mut child = child;
+            let _ = child.wait();
+        });
+
+        self.sessions.lock().unwrap().insert(
+            id,
+            PtySession {
+                writer,
+                master,
+                killer,
+                stdout_buf: Arc::clone(&stdout_buf),
+                last_activity,
+            },
+        );
+
+        Ok((id, stdout_buf, exit_rx))
+    }
+
+    /// Milliseconds since the target PTY last produced output. `None` if the pty
+    /// is unknown. Used to gate `send_message` delivery until the agent is idle.
+    pub fn idle_ms(&self, id: u32) -> Option<u128> {
+        let map = self.sessions.lock().ok()?;
+        let session = map.get(&id)?;
+        let last = session.last_activity.lock().ok()?;
+        Some(last.elapsed().as_millis())
+    }
+
     /// Kill every live child and clear the table. Idempotent.
     pub fn kill_all(&self) {
         if let Ok(mut map) = self.sessions.lock() {
@@ -76,6 +224,11 @@ impl Drop for PtyManager {
 
 /// Newtype wrapper so Tauri can manage Arc<PtyManager> as app state.
 pub struct PtyManagerState(pub Arc<PtyManager>);
+
+/// Newtype wrapper so Tauri can manage the shared live-agent registry. The same
+/// `Arc` is handed to the MCP server so `list_agents` / `send_message` read the
+/// list the frontend keeps up to date via the `sync_agents` command.
+pub struct AgentRegistryState(pub mcp::AgentRegistry);
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
 
@@ -155,6 +308,8 @@ fn pty_spawn(
 
     let stdout_buf: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let stdout_buf_reader = Arc::clone(&stdout_buf);
+    let last_activity: Arc<Mutex<Instant>> = Arc::new(Mutex::new(Instant::now()));
+    let last_activity_reader = Arc::clone(&last_activity);
 
     // bounded channel: read thread -> forwarder thread -> Channel (frontend).
     let (tx, rx) = sync_channel::<Vec<u8>>(64);
@@ -169,6 +324,9 @@ fn pty_spawn(
                     let chunk = &buf[..n];
                     if let Ok(mut acc) = stdout_buf_reader.lock() {
                         acc.extend_from_slice(chunk);
+                    }
+                    if let Ok(mut la) = last_activity_reader.lock() {
+                        *la = Instant::now();
                     }
                     let _ = tx.try_send(chunk.to_vec());
                 }
@@ -197,6 +355,7 @@ fn pty_spawn(
             master,
             killer,
             stdout_buf,
+            last_activity,
         },
     );
 
@@ -245,6 +404,20 @@ fn pty_kill(manager: State<PtyManagerState>, id: u32) -> Result<(), String> {
     if let Some(mut session) = map.remove(&id) {
         let _ = session.killer.kill();
     }
+    Ok(())
+}
+
+/// Replace the live-agent registry with the frontend's current view. The
+/// frontend (Zustand store) is the source of truth for agent label/group/status/
+/// pty id and calls this whenever nodes change, so the MCP tools `list_agents`
+/// and `send_message` always see the current canvas.
+#[tauri::command]
+fn sync_agents(
+    registry: State<AgentRegistryState>,
+    agents: Vec<mcp::AgentInfo>,
+) -> Result<(), String> {
+    let mut guard = registry.0.lock().map_err(|_| "agent registry poisoned")?;
+    *guard = agents;
     Ok(())
 }
 
@@ -400,12 +573,18 @@ pub fn run() {
     let pty_manager = Arc::new(PtyManager::default());
     let pty_manager_for_mcp = Arc::clone(&pty_manager);
 
+    // Shared live-agent registry: written by the `sync_agents` command (frontend)
+    // and read by the MCP server's list_agents / send_message tools.
+    let agents: mcp::AgentRegistry = Arc::new(Mutex::new(Vec::new()));
+    let agents_for_mcp = Arc::clone(&agents);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(PtyManagerState(pty_manager))
+        .manage(AgentRegistryState(agents))
         .manage(GroupRegistry::default())
         // McpState is inserted after the server starts (see setup hook below).
         .setup(move |app| {
@@ -416,7 +595,7 @@ pub fn run() {
             // The server binds to an ephemeral port; we store it in McpState
             // so create_group can write `.mcp.json` with the correct URL.
             tauri::async_runtime::block_on(async move {
-                match mcp::start(pm, app_handle.clone(), 3).await {
+                match mcp::start(pm, app_handle.clone(), 3, agents_for_mcp).await {
                     Ok(port) => {
                         tracing::info!(port, "MCP server started");
                         app_handle.manage(McpState { port });
@@ -436,6 +615,7 @@ pub fn run() {
             pty_write,
             pty_resize,
             pty_kill,
+            sync_agents,
             create_group,
             session_usage,
             codex_usage,

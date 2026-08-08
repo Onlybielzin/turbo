@@ -121,6 +121,17 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     [id, setPtyId]
   );
 
+  // A spawned-agent child node attaches to its pty's live `child_output` stream
+  // instead of spawning, so the subagent is visible working on the canvas
+  // (read-only). Identify it by the stable `terminal-child-` id prefix — NOT by
+  // `!command && ptyId`, which also matches a normal shell terminal once it has
+  // spawned and received its ptyId (setPtyId), turning any remount of that shell
+  // into a dead attach that renders nothing ("terminal reinicia limpo").
+  const attachChildPtyId =
+    id.startsWith("terminal-child-") && typeof data.ptyId === "number"
+      ? data.ptyId
+      : undefined;
+
   const { kill, focusRenderer, blurRenderer } = usePty({
     nodeId: id,
     hostRef,
@@ -132,6 +143,8 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     env: data.env as [string, string][] | undefined,
     onStatusChange: handleStatusChange,
     onPtyReady: handlePtyReady,
+    // Child agents attach to a live stream instead of spawning their own PTY.
+    attachChildPtyId,
     // No existingPtyId needed: create_group no longer pre-spawns claude.
     // usePty always spawns the PTY itself, using env vars for group context.
   });

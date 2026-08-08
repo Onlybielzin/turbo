@@ -26,9 +26,10 @@ import {
   Viewport,
 } from "@xyflow/react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
-import { useCanvasStore, nextAgentColor } from "./store";
+import { useCanvasStore, nextAgentColor, TerminalNodeData } from "./store";
 import { useSettingsStore } from "./settings";
 import { TerminalNode } from "./TerminalNode";
 import { FpsMeter } from "./FpsMeter";
@@ -62,7 +63,8 @@ const defaultEdgeOptions: DefaultEdgeOptions = {
 interface NodeCreatedPayload {
   group_id: string;
   parent_pty_id: number;
-  child_pty_id: string;
+  /** Real PtyManager id of the spawned child — the node attaches to its live stream. */
+  child_pty_id: number;
   label: string;
 }
 
@@ -135,6 +137,31 @@ function CanvasInner() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Mirror the live-agent list into the Rust registry so the MCP tools
+  // `list_agents` and `send_message` can see who's on the canvas. The store is
+  // the source of truth; we debounce because `nodes` also churns on drag/resize.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const list = useCanvasStore
+        .getState()
+        .nodes.filter((n) => n.type === "terminal")
+        .map((n) => {
+          const d = n.data as TerminalNodeData;
+          return {
+            node_id: n.id,
+            label: d.label ?? "",
+            group_id: n.parentId ?? "",
+            model: (d.agent as string) || (d.command as string) || "",
+            status: (d.status as string) ?? "running",
+            pty_id: typeof d.ptyId === "number" ? d.ptyId : null,
+            kind: n.id.includes("terminal-child") ? "child" : "parent",
+          };
+        });
+      void invoke("sync_agents", { agents: list }).catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [nodes]);
 
   // Session restore (group MCP re-registration + terminal command recomposition)
   // happens in prepareRestore (see mcp.ts), gated by App BEFORE this canvas mounts,

@@ -8,4 +8,6 @@ pub mod server;
 pub mod spawn_agent;
 
 pub use server::start;
+pub use server::AgentInfo;
+pub use server::AgentRegistry;
 pub use server::McpState;

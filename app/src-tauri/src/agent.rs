@@ -25,6 +25,20 @@ fn clean_role(role: Option<&str>) -> Option<&str> {
     role.map(|s| s.trim()).filter(|s| !s.is_empty())
 }
 
+/// Baseline system prompt injected into every interactive parent (orchestrator)
+/// terminal so it knows it is running inside Turbo and how to orchestrate other
+/// agents via the embedded `turbo` MCP server. Prepended to the agent's own role.
+const TURBO_MCP_INSTRUCTION: &str = "Você está rodando dentro do Turbo, um canvas de agentes ao vivo. Seu nome real está na variável de ambiente $TURBO_AGENT_NAME. Você pode atuar como orquestrador. \
+Você tem acesso ao servidor MCP `turbo`. REGRA PRINCIPAL: quando o usuário pedir para OUTRO agente fazer algo \
+(ex: \"manda o agente X fazer Y\", \"delega isso\", \"o backend que faça\"), você NÃO executa a tarefa você mesmo — \
+você usa as ferramentas abaixo para repassar. Só faça a tarefa diretamente se o usuário pedir explicitamente a VOCÊ.\n\
+Ferramentas:\n\
+- spawn_agent: cria um subagente NOVO (efêmero) para uma tarefa e recebe o resultado de volta. Use APENAS quando o usuário NÃO nomear um agente já existente — ou seja, quando pedir genericamente 'dispara/cria um subagente'. Passe group_id = valor de $TURBO_GROUP_ID.\n\
+- list_agents: lista os agentes ativos no canvas — use para descobrir quem está ativo e o label/id exato antes de mandar mensagem.\n\
+- send_message: envia uma mensagem para um agente JÁ ATIVO. SEMPRE passe `from` = valor de $TURBO_AGENT_NAME (seu nome real; rode `echo $TURBO_AGENT_NAME`), nunca invente. Alvo por label, id ou pty. Para receber a resposta de volta, o outro agente vai te responder com send_message usando você como target.\n\
+- create_agent: salva um novo agente no menu lateral do projeto.\n\
+REGRA DE DECISÃO: quando o usuário mandar falar com / mandar para / delegar a um agente ESPECÍFICO pelo nome (ex: 'manda o Backend', 'pede pro Backend'), rode list_agents; se ele estiver ativo, use send_message (ele responde de volta) — NÃO use spawn_agent nesse caso. Se o agente nomeado NÃO estiver ativo, avise o usuário que precisa abri-lo, em vez de disparar um subagente diferente. Use spawn_agent só quando o usuário NÃO nomear um agente existente. Descubra seu group_id com `echo $TURBO_GROUP_ID`.";
+
 impl AgentBackend {
     /// Parse a short agent token into a backend.
     /// - `"codex"` → Codex with the CLI's default model
@@ -104,6 +118,11 @@ impl AgentBackend {
         session_id: Option<&str>,
         resume: bool,
     ) -> (String, Vec<String>) {
+        // Every orchestrator gets the Turbo MCP instruction, plus its own role.
+        let combined_role = match clean_role(role) {
+            Some(r) => format!("{TURBO_MCP_INSTRUCTION}\n\n{r}"),
+            None => TURBO_MCP_INSTRUCTION.to_string(),
+        };
         match self {
             AgentBackend::Claude { model } => {
                 // Bypass permission prompts so the chat is usable unattended.
@@ -118,7 +137,7 @@ impl AgentBackend {
                     a.push(if resume { "--resume" } else { "--session-id" }.to_string());
                     a.push(sid.to_string());
                 }
-                a.extend(self.role_args(role));
+                a.extend(self.role_args(Some(&combined_role)));
                 (self.program().to_string(), a)
             }
             AgentBackend::Codex { model } => {
@@ -129,7 +148,7 @@ impl AgentBackend {
                 }
                 a.push("-c".to_string());
                 a.push(format!("mcp_servers.turbo.url=\"{mcp_url}\""));
-                a.extend(self.role_args(role));
+                a.extend(self.role_args(Some(&combined_role)));
                 if resume {
                     a.push("resume".to_string());
                     a.push("--last".to_string());
@@ -270,17 +289,35 @@ mod tests {
         assert_eq!(a[i + 1], "Você é backend");
         assert_eq!(a[1], "faça X"); // -p positional is the task, not the role
 
-        // Codex interactive: -c developer_instructions=<role>, no positional prompt.
+        // Codex interactive: -c developer_instructions=<base + role>, no positional prompt.
         let (_c2, a2) =
             (AgentBackend::Codex { model: None }).parent_command("http://x/mcp", Some("Você é seguranca"), None, false);
         assert!(a2
             .iter()
-            .any(|s| s == "developer_instructions=Você é seguranca"));
+            .any(|s| s.starts_with("developer_instructions=") && s.ends_with("Você é seguranca")));
     }
 
     #[test]
-    fn empty_role_adds_no_flags() {
+    fn empty_role_yields_only_the_turbo_instruction() {
+        // A whitespace-only user role adds no user text, but every orchestrator
+        // still gets the baseline Turbo MCP instruction as its system prompt.
         let (_c, a) = AgentBackend::parse("fable").parent_command("x", Some("   "), None, false);
-        assert!(!a.contains(&"--append-system-prompt".to_string()));
+        let i = a
+            .iter()
+            .position(|s| s == "--append-system-prompt")
+            .unwrap();
+        assert_eq!(a[i + 1], TURBO_MCP_INSTRUCTION);
+    }
+
+    #[test]
+    fn parent_prepends_turbo_instruction_to_role() {
+        // Claude: system prompt = base instruction + the agent's own role.
+        let (_c, a) = AgentBackend::parse("opus").parent_command("u", Some("Você é backend"), None, false);
+        let i = a
+            .iter()
+            .position(|s| s == "--append-system-prompt")
+            .unwrap();
+        assert!(a[i + 1].contains("MCP `turbo`"));
+        assert!(a[i + 1].ends_with("Você é backend"));
     }
 }

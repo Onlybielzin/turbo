@@ -17,7 +17,7 @@
 //! not from the ambient Tauri process env).
 
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -31,7 +31,6 @@ use rmcp::{schemars, tool, tool_router, Peer, RoleServer};
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter};
 
-use super::spawn_agent::run_in_pty_blocking;
 use crate::agent::AgentBackend;
 use crate::PtyManager;
 
@@ -50,7 +49,7 @@ pub struct McpState {
 pub struct NodeCreatedPayload {
     pub group_id: String,
     pub parent_pty_id: u32,
-    pub child_pty_id: String, // UUID string — the PTY hasn't been registered in PtyManager for child agents
+    pub child_pty_id: u32, // real PtyManager id — the child streams live via child_output
     pub label: String,
 }
 
@@ -66,14 +65,50 @@ pub struct AgentCreatedPayload {
     pub color: Option<String>,
 }
 
+// ─── Agent registry (live agents, shared with Tauri `sync_agents` command) ─────
+
+/// One live agent/terminal, as mirrored from the frontend Zustand store. The
+/// frontend is the source of truth (it owns node label/group/status/ptyId) and
+/// pushes the current list into this registry via the `sync_agents` Tauri command
+/// whenever nodes change. The MCP tools `list_agents` / `send_message` read it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+pub struct AgentInfo {
+    /// Canvas node id (stable within a session).
+    pub node_id: String,
+    /// Display name shown on the terminal node.
+    #[serde(default)]
+    pub label: String,
+    /// Group/project id the agent belongs to.
+    #[serde(default)]
+    pub group_id: String,
+    /// Backend/model token (e.g. "opus", "codex", "sonnet").
+    #[serde(default)]
+    pub model: String,
+    /// "running" | "ok" | "error".
+    #[serde(default)]
+    pub status: String,
+    /// PtyManager id, when this agent has a live PTY we can write to. `None` for
+    /// display-only nodes.
+    #[serde(default)]
+    pub pty_id: Option<u32>,
+    /// "parent" (interactive orchestrator terminal) or "child" (spawned agent).
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// Shared, mutable list of live agents. Cloned into both the Tauri command layer
+/// (writer) and every MCP `SpawnServer` connection (reader).
+pub type AgentRegistry = Arc<Mutex<Vec<AgentInfo>>>;
+
 // ─── MCP server handler ───────────────────────────────────────────────────────
 
 #[derive(Clone)]
 pub struct SpawnServer {
     depth_limit: u32,
-    #[allow(dead_code)] // reserved: will use for child PTY registration
     pty_manager: Arc<PtyManager>,
     app: AppHandle,
+    /// Live agents mirrored from the frontend (read by list_agents/send_message).
+    agents: AgentRegistry,
     #[allow(dead_code)] // used internally by rmcp #[tool_router] macro dispatch
     tool_router: ToolRouter<Self>,
 }
@@ -135,13 +170,42 @@ pub struct CreateAgentParams {
     pub color: String,
 }
 
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct ListAgentsParams {
+    /// Optional group id to filter by — pass your own TURBO_GROUP_ID to see only
+    /// the agents in your project. Empty (default) lists agents from every group.
+    #[serde(default)]
+    pub group_id: String,
+}
+
+#[derive(Deserialize, schemars::JsonSchema)]
+pub struct SendMessageParams {
+    /// Who to message: the agent's label/name (e.g. "backend"), its node_id, or
+    /// its pty id as a string. Matched case-insensitively; label match wins.
+    pub target: String,
+    /// The message text to deliver into the target agent's terminal (submitted as
+    /// if typed + Enter).
+    pub message: String,
+    /// Optional: your own name/label as the sender, so the recipient knows who
+    /// asked. Shown in the "[Turbo]" header prepended to the message. Empty →
+    /// the header just says it came from another agent.
+    #[serde(default)]
+    pub from: String,
+}
+
 #[tool_router(server_handler)]
 impl SpawnServer {
-    pub fn new(depth_limit: u32, pty_manager: Arc<PtyManager>, app: AppHandle) -> Self {
+    pub fn new(
+        depth_limit: u32,
+        pty_manager: Arc<PtyManager>,
+        app: AppHandle,
+        agents: AgentRegistry,
+    ) -> Self {
         Self {
             depth_limit,
             pty_manager,
             app,
+            agents,
             tool_router: Self::tool_router(),
         }
     }
@@ -183,6 +247,166 @@ impl SpawnServer {
         ))]))
     }
 
+    /// List the agents currently alive on the canvas (parents + spawned children),
+    /// so an orchestrator can see who is available to delegate to or message.
+    #[tool(
+        name = "list_agents",
+        description = "List the agents currently active on the canvas — their name, model, status, \
+            group and ids. Use this to see who you can delegate to (spawn_agent) or message \
+            (send_message). Pass group_id (your TURBO_GROUP_ID) to filter to your own project; \
+            omit to list every group."
+    )]
+    async fn list_agents(
+        &self,
+        Parameters(p): Parameters<ListAgentsParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let filter = p.group_id.trim();
+        let snapshot: Vec<AgentInfo> = {
+            let guard = self.agents.lock().unwrap_or_else(|e| e.into_inner());
+            guard
+                .iter()
+                .filter(|a| filter.is_empty() || a.group_id == filter)
+                .cloned()
+                .collect()
+        };
+
+        if snapshot.is_empty() {
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
+                "no active agents".to_string(),
+            )]));
+        }
+
+        let mut lines = vec![format!("{} active agent(s):", snapshot.len())];
+        for a in &snapshot {
+            let pty = a
+                .pty_id
+                .map(|id| id.to_string())
+                .unwrap_or_else(|| "-".to_string());
+            lines.push(format!(
+                "- {label} [{kind}] model={model} status={status} pty={pty} group={group} id={id}",
+                label = if a.label.is_empty() { "(unnamed)" } else { &a.label },
+                kind = if a.kind.is_empty() { "?" } else { &a.kind },
+                model = if a.model.is_empty() { "?" } else { &a.model },
+                status = if a.status.is_empty() { "?" } else { &a.status },
+                pty = pty,
+                group = a.group_id,
+                id = a.node_id,
+            ));
+        }
+        Ok(CallToolResult::success(vec![ContentBlock::text(
+            lines.join("\n"),
+        )]))
+    }
+
+    /// Deliver a message into another agent's live terminal (chat → chat). Resolves
+    /// the target from the agent registry and writes the text (plus Enter) to its PTY.
+    #[tool(
+        name = "send_message",
+        description = "Send a message to another active agent's terminal (chat to chat). The text is \
+            typed into the target's terminal and submitted. Identify the target by its label/name, \
+            node_id, or pty id (see list_agents). Only agents with a live PTY can receive messages."
+    )]
+    async fn send_message(
+        &self,
+        Parameters(p): Parameters<SendMessageParams>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let target = p.target.trim();
+        if target.is_empty() {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "send_message: target is required".to_string(),
+            )]));
+        }
+
+        // Resolve target → pty_id. Priority: exact node_id, then case-insensitive
+        // label, then a numeric pty id. Only agents with a live PTY are eligible.
+        let resolved: Option<(String, u32)> = {
+            let guard = self.agents.lock().unwrap_or_else(|e| e.into_inner());
+            let target_lower = target.to_ascii_lowercase();
+            let by_node = guard.iter().find(|a| a.node_id == target);
+            let by_label = guard
+                .iter()
+                .find(|a| a.label.to_ascii_lowercase() == target_lower);
+            let by_pty = target
+                .parse::<u32>()
+                .ok()
+                .and_then(|id| guard.iter().find(|a| a.pty_id == Some(id)));
+            by_node
+                .or(by_label)
+                .or(by_pty)
+                .and_then(|a| a.pty_id.map(|id| (a.label.clone(), id)))
+        };
+
+        let Some((label, pty_id)) = resolved else {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "send_message: no live agent matches target '{target}' (use list_agents to see who's available)"
+            ))]));
+        };
+
+        // Prepend a one-line header so the recipient knows this arrived from
+        // another agent (not the human) and should act on it + reply back. Kept
+        // on a single line so the target CLI submits it as exactly one turn.
+        let from = p.from.trim();
+        let sender = if from.is_empty() {
+            "outro agente".to_string()
+        } else {
+            format!("o agente '{from}'")
+        };
+        // Round-trip: if we know the sender, tell the recipient to reply via
+        // send_message back to it; otherwise just answer in its own terminal.
+        let reply_hint = if from.is_empty() {
+            "Faça o que for pedido e responda aqui com o resultado.".to_string()
+        } else {
+            format!(
+                "Faça o que for pedido e RESPONDA de volta usando a tool send_message com target=\"{from}\" e sua resposta em message."
+            )
+        };
+        let text = format!(
+            "[Turbo] Mensagem automática de {sender} (não é o usuário). {reply_hint} Mensagem: {}",
+            p.message
+        );
+
+        // Write the message body first, then send Enter as a SEPARATE keystroke
+        // after a short delay. Ink-based TUIs (claude/codex) treat a burst of
+        // bytes ending in \r as a paste and keep the newline INSIDE the input
+        // instead of submitting — so the message showed up typed but unsent. A
+        // standalone, delayed carriage return registers as a real Enter.
+        // Deliver when the target is idle: enqueue a background task that waits
+        // until the target PTY has been quiet (~1.2s of no output) before writing,
+        // so the message isn't injected mid-generation (which the CLI would
+        // clobber or interleave). Falls back to delivering after a max wait.
+        // Returns immediately so the calling agent isn't blocked.
+        let pm = Arc::clone(&self.pty_manager);
+        let deliver_text = text;
+        tokio::spawn(async move {
+            const IDLE_MS: u128 = 1200;
+            const POLL_MS: u64 = 300;
+            const MAX_WAIT_MS: u128 = 20_000;
+            let mut waited: u128 = 0;
+            loop {
+                let idle = pm.idle_ms(pty_id).unwrap_or(u128::MAX);
+                if idle >= IDLE_MS || waited >= MAX_WAIT_MS {
+                    break;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(POLL_MS)).await;
+                waited += POLL_MS as u128;
+            }
+            if let Err(e) = pm.write(pty_id, &deliver_text) {
+                tracing::warn!(pty_id, error = %e, "send_message delivery write failed");
+                return;
+            }
+            // Separate, delayed Enter so the CLI submits it (see the write() note
+            // about Ink TUIs treating a trailing \r in a burst as paste content).
+            tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+            if let Err(e) = pm.write(pty_id, "\r") {
+                tracing::warn!(pty_id, error = %e, "send_message submit failed");
+            }
+        });
+        tracing::info!(target = %label, pty_id, "send_message queued (deliver when idle)");
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+            "message queued for '{label}' (pty {pty_id}) — será entregue quando o agente estiver ocioso"
+        ))]))
+    }
+
     /// Spawn a child claude agent in a PTY, emit a canvas `node_created` event,
     /// stream progress every 10 s, and return the child's full stdout when done.
     ///
@@ -216,27 +440,14 @@ impl SpawnServer {
             ))]));
         }
 
-        let child_id = uuid::Uuid::new_v4().to_string();
         let label = if p.label.is_empty() {
-            format!("agent-{}", &child_id[..8])
+            format!("agent-{}", &uuid::Uuid::new_v4().to_string()[..8])
         } else {
             p.label.clone()
         };
 
         // Parse parent_pty_id — default 0 if absent/invalid.
         let parent_pty_id: u32 = p.parent_pty_id.parse().unwrap_or(0);
-
-        // Emit `node_created` to the frontend BEFORE the blocking call so the
-        // canvas shows the child node immediately.
-        let payload = NodeCreatedPayload {
-            group_id: p.group_id.clone(),
-            parent_pty_id,
-            child_pty_id: child_id.clone(),
-            label: label.clone(),
-        };
-        if let Err(e) = self.app.emit("node_created", payload) {
-            tracing::warn!(error = %e, "failed to emit node_created event");
-        }
 
         tracing::info!(label = %label, depth = p.depth, group_id = %p.group_id, "spawn_agent start");
 
@@ -271,24 +482,46 @@ impl SpawnServer {
             extra_env.push(("TURBO_WORKTREE_CWD".to_string(), p.worktree.clone()));
         }
 
+        // Spawn the child as a REAL PTY registered in the manager: it streams live
+        // to the canvas (via the `child_output` event) so the subagent is visible
+        // working, while every byte is buffered for the blocking return to the parent.
+        let (child_pty_id, stdout_buf, exit_rx) = match self
+            .pty_manager
+            .spawn_child_streaming(self.app.clone(), command, args, cwd, extra_env)
+        {
+            Ok(t) => t,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "spawn_agent failed to start child pty: {e}"
+                ))]))
+            }
+        };
+
+        // Now that we have the real pty id, tell the canvas to add the child node
+        // and attach to this pty's live output stream.
+        let payload = NodeCreatedPayload {
+            group_id: p.group_id.clone(),
+            parent_pty_id,
+            child_pty_id,
+            label: label.clone(),
+        };
+        if let Err(e) = self.app.emit("node_created", payload) {
+            tracing::warn!(error = %e, "failed to emit node_created event");
+        }
+
         let progress_token: Option<ProgressToken> = meta.get_progress_token();
 
-        // Run PTY in spawn_blocking — no thread leak on task cancellation;
-        // the OS thread finishes naturally and the JoinHandle is owned by tokio.
-        let pty_task = tokio::task::spawn_blocking(move || {
-            run_in_pty_blocking(command, args, cwd, extra_env)
-        });
-        tokio::pin!(pty_task);
-
-        // Heartbeat every 10 s to keep the parent claude's MCP idle timer alive (ORCH-05).
+        // Await the child's exit with a 10s heartbeat to keep the parent claude's
+        // MCP idle timer alive (ORCH-05). The child streams live in the meantime.
+        tokio::pin!(exit_rx);
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(10));
         interval.tick().await; // skip the immediate first tick
 
         let mut elapsed_ticks: u64 = 0;
-        let result = loop {
+        loop {
             tokio::select! {
                 biased;
-                result = &mut pty_task => break result,
+                _ = &mut exit_rx => break,
                 _ = interval.tick() => {
                     elapsed_ticks += 1;
                     tracing::info!(
@@ -314,20 +547,14 @@ impl SpawnServer {
                     }
                 }
             }
-        };
-
-        match result {
-            Ok(Ok(out)) => {
-                tracing::info!(label = %label, "spawn_agent done");
-                Ok(CallToolResult::success(vec![ContentBlock::text(out)]))
-            }
-            Ok(Err(e)) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "spawn_agent failed: {e}"
-            ))])),
-            Err(join_err) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "spawn_agent task panicked: {join_err}"
-            ))])),
         }
+
+        tracing::info!(label = %label, "spawn_agent done");
+        let out = stdout_buf
+            .lock()
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        Ok(CallToolResult::success(vec![ContentBlock::text(out)]))
     }
 }
 
@@ -342,6 +569,7 @@ pub async fn start(
     pty_manager: Arc<PtyManager>,
     app: AppHandle,
     depth_limit: u32,
+    agents: AgentRegistry,
 ) -> anyhow::Result<u16> {
     let addr: SocketAddr = "127.0.0.1:0".parse()?; // port 0 → OS picks a free port
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -356,6 +584,7 @@ pub async fn start(
                 depth_limit,
                 Arc::clone(&pm),
                 app_clone.clone(),
+                Arc::clone(&agents),
             ))
         },
         Arc::new(LocalSessionManager::default()),
