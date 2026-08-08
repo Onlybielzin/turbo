@@ -231,11 +231,21 @@ function CanvasInner() {
     const onWheel = (e: WheelEvent) => {
       if (!e.ctrlKey) return;
       const target = e.target as HTMLElement | null;
-      // Only take over inside a terminal/nowheel region; elsewhere the pane's
-      // native zoomOnScroll already handles ctrl+wheel.
+      // Only take over inside a terminal/nowheel region of THIS canvas; over the
+      // pane the native zoomOnScroll already handles ctrl+wheel, so we fall
+      // through there.
       if (!target?.closest(".nowheel")) return;
+      if (!target.closest(".canvas-area")) return;
       e.preventDefault();
       e.stopPropagation();
+      // Normalize the wheel delta to pixels. WebKitGTK (Wayland) often reports
+      // deltaMode=LINE (deltaY≈±1..3) for a mouse wheel, which made the exp()
+      // zoom factor ≈0.998 — imperceptible. Convert line/page deltas to pixels
+      // so ctrl+wheel zooms at a usable step regardless of the reported unit.
+      const LINE_PX = 16;
+      const PAGE_PX = 400;
+      const dy =
+        e.deltaMode === 1 ? e.deltaY * LINE_PX : e.deltaMode === 2 ? e.deltaY * PAGE_PX : e.deltaY;
       const rect = area.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
@@ -243,14 +253,17 @@ function CanvasInner() {
       // Flow point under the cursor — kept fixed while the zoom changes.
       const fx = (sx - vp.x) / vp.zoom;
       const fy = (sy - vp.y) / vp.zoom;
-      const factor = Math.exp(-e.deltaY * 0.002);
+      const factor = Math.exp(-dy * 0.002);
       const zoom = Math.min(4, Math.max(0.1, vp.zoom * factor));
       setViewport({ x: sx - fx * zoom, y: sy - fy * zoom, zoom });
       applyZoom(zoom);
     };
-    area.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    // Attach on `document` in the CAPTURE phase so this runs before ANY
+    // element-level wheel listener (xterm's own buffer-scroll handler included),
+    // regardless of DOM nesting — guaranteeing ctrl+wheel always zooms.
+    document.addEventListener("wheel", onWheel, { capture: true, passive: false });
     return () =>
-      area.removeEventListener("wheel", onWheel, { capture: true } as EventListenerOptions);
+      document.removeEventListener("wheel", onWheel, { capture: true } as EventListenerOptions);
   }, [getViewport, setViewport, applyZoom]);
 
   const isEmpty = nodes.length === 0;
