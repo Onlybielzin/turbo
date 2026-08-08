@@ -9,25 +9,23 @@
  * - Track process status (running / ok / error)
  * - Kill PTY on unmount or when kill() is called
  * - Handle pty_exit event to update status
- * - Renderer switching: CanvasAddon by default; WebGL on focus (max 1 active)
+ * - Renderer: xterm's DOM renderer for every node (sharp + zoom-stable under
+ *   ReactFlow's transform:scale()). WebGL was tried but is counter-productive
+ *   under WebKitGTK software compositing on this box (see focus/blur note).
  *
  * Design contract: 03-UI-SPEC.md
  * - FitAddon reads offsetWidth/offsetHeight (not getBoundingClientRect) to
  *   avoid wrong cols/rows at non-1.0 zoom (xterm inside CSS transform).
- * - Max 1 WebGL context active at any time (addon-canvas for all others).
+ * - Paint-reduction: PTY output is coalesced to one term.write per animation
+ *   frame, and the cursor only blinks while focused — both cut repaint frequency.
  */
 import { useEffect, useRef, useCallback } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { CanvasAddon } from "@xterm/addon-canvas";
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { NodeStatus } from "./store";
 import { markActivity } from "./activity";
-
-// Singleton: track which node currently has the WebGL renderer.
-// We use a module-level variable so all TerminalNode instances share it.
-let webGLFocusedNodeId: string | null = null;
 
 interface UsePtyOptions {
   nodeId: string;
@@ -49,8 +47,10 @@ interface UsePtyOptions {
 
 interface UsePtyResult {
   kill: () => void;
-  activateWebGL: () => void;
-  deactivateWebGL: () => void;
+  /** Node gained focus → enable cursor blink. */
+  focusRenderer: () => void;
+  /** Node lost focus → disable cursor blink. */
+  blurRenderer: () => void;
 }
 
 export function usePty({
@@ -68,13 +68,10 @@ export function usePty({
   const disposedRef = useRef(false);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
-  const canvasAddonRef = useRef<CanvasAddon | null>(null);
-  // Store WebGL addon class dynamically to avoid bundling it if never used
-  const webGLAddonRef = useRef<InstanceType<typeof import("@xterm/addon-webgl").WebglAddon> | null>(null);
 
   const killRef = useRef<() => void>(() => {});
-  const activateWebGLRef = useRef<() => void>(() => {});
-  const deactivateWebGLRef = useRef<() => void>(() => {});
+  const focusRendererRef = useRef<() => void>(() => {});
+  const blurRendererRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     const host = hostRef.current;
@@ -97,7 +94,9 @@ export function usePty({
       fontSize: 14,
       lineHeight: 1.0,
       letterSpacing: 0,
-      cursorBlink: true,
+      // Off by default: a blinking cursor repaints forever on EVERY unfocused
+      // terminal. focusRenderer() turns it on only for the node in focus.
+      cursorBlink: false,
       theme: {
         background: "#161514",
         foreground: "#e6e1dc",
@@ -111,11 +110,8 @@ export function usePty({
     term.loadAddon(fit);
     term.open(host);
 
-    // Renderer: xterm's built-in DOM renderer (no Canvas/WebGL addon). ReactFlow
-    // applies transform:scale() to the whole canvas for pan/zoom; the DOM renderer
-    // stays crisp under that scale (the browser re-rasterises vector glyphs),
-    // whereas a Canvas/WebGL bitmap gets resampled into blurry, oddly-spaced text
-    // when zoomed. For a handful of terminals the DOM renderer's perf is plenty.
+    // Renderer: xterm's built-in DOM renderer for every node — sharp and
+    // zoom-stable under ReactFlow's transform:scale(). No render addon is loaded.
 
     // ── Selection fix under ReactFlow zoom ────────────────────────────────
     // ReactFlow zooms the whole canvas with `transform: scale(z)`. xterm maps a
@@ -246,10 +242,32 @@ export function usePty({
     // ── PTY spawn (or attach to existing) ────────────────────────────────
     let ptyId: number | null = null;
 
+    // Coalesce PTY output to a single term.write per animation frame (perf):
+    // a chatty agent can fire many small chunks between frames; writing each one
+    // triggers its own render/refresh cycle. We buffer the byte arrays and flush
+    // them concatenated once per rAF, collapsing N paints into one.
+    let pending: number[][] = [];
+    let flushHandle: number | null = null;
+    const flush = () => {
+      flushHandle = null;
+      if (pending.length === 0) return;
+      let total = 0;
+      for (const chunk of pending) total += chunk.length;
+      const merged = new Uint8Array(total);
+      let offset = 0;
+      for (const chunk of pending) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+      pending = [];
+      term.write(merged);
+    };
+
     const onData = new Channel<number[]>();
     onData.onmessage = (bytes) => {
       markActivity(nodeId); // PTY produced output → this agent is actively working
-      term.write(new Uint8Array(bytes));
+      pending.push(bytes);
+      if (flushHandle === null) flushHandle = requestAnimationFrame(flush);
     };
 
     void (async () => {
@@ -335,6 +353,13 @@ export function usePty({
       if (resizeTimer) clearTimeout(resizeTimer);
       resizeTimer = setTimeout(() => {
         resizeTimer = null;
+        // T2: never fit() mid pan/zoom gesture. A fit() can change cols/rows,
+        // firing term.onResize → pty_resize → SIGWINCH, making the live agent
+        // reflow on every zoom step (catastrophic for perf and correctness). The
+        // node's offset box doesn't actually change under transform:scale, so a
+        // fit here during a gesture would be spurious anyway. Canvas re-fits once
+        // when the gesture settles (data-zooming cleared). Guarded read.
+        if (host.closest(".canvas-area[data-zooming]")) return;
         try {
           fit.fit();
         } catch {
@@ -365,49 +390,33 @@ export function usePty({
     };
     void isExternalPty; // suppress unused warning
 
-    // ── WebGL renderer switching ──────────────────────────────────────────
-    // Renderer switching disabled: keep the crisp DOM renderer at all times.
-    // Canvas/WebGL render to a bitmap that ReactFlow's zoom transform resamples
-    // into blurry text; DOM text stays sharp at any zoom. No-op so TerminalNode's
-    // focus handler stays valid.
-    activateWebGLRef.current = () => {};
+    // ── Cursor blink on focus / blur ──────────────────────────────────────
+    // Every node stays on xterm's DOM renderer. We tried upgrading the focused
+    // node to the WebGL addon (GPU glyph rasterization), but under WebKitGTK's
+    // SOFTWARE compositing (WEBKIT_DISABLE_DMABUF_RENDERER=1 — forced on this
+    // Wayland/NVIDIA box) a WebGL canvas must be read back GPU→CPU every frame to
+    // be composited, which added jank/CPU instead of removing it. So the only
+    // per-focus behaviour is the cursor blink: on for the focused node, off for
+    // all others (an idle blink repaints every unfocused terminal forever).
+    focusRendererRef.current = () => {
+      const term = termRef.current;
+      if (term) term.options.cursorBlink = true;
+    };
 
-    deactivateWebGLRef.current = () => {
-      if (webGLFocusedNodeId !== nodeId) return;
-      if (webGLAddonRef.current) {
-        try {
-          webGLAddonRef.current.dispose?.();
-        } catch {
-          /* ignore */
-        }
-        webGLAddonRef.current = null;
-      }
-      webGLFocusedNodeId = null;
-      // Reattach canvas renderer
-      if (termRef.current) {
-        const ca = new CanvasAddon();
-        canvasAddonRef.current = ca;
-        try {
-          termRef.current.loadAddon(ca);
-        } catch {
-          /* ignore */
-        }
-      }
+    blurRendererRef.current = () => {
+      const term = termRef.current;
+      if (term) term.options.cursorBlink = false;
     };
 
     // ── Cleanup ───────────────────────────────────────────────────────────
     return () => {
       disposedRef.current = true;
       if (resizeTimer) clearTimeout(resizeTimer);
+      if (flushHandle !== null) cancelAnimationFrame(flushHandle);
       resizeObserver.disconnect();
       host.removeEventListener("mouseup", copySelection);
 
       void unlistenExit.then((f) => f());
-
-      // Deactivate WebGL if this node had it
-      if (webGLFocusedNodeId === nodeId) {
-        deactivateWebGLRef.current();
-      }
 
       if (ptyIdRef.current !== null) {
         // Kill the PTY regardless of whether we spawned it or attached to an existing one
@@ -415,25 +424,8 @@ export function usePty({
         ptyIdRef.current = null;
       }
 
-      // Tear down xterm DEFENSIVELY. @xterm/addon-canvas 0.7 on xterm 6 throws in
-      // its dispose path (reads a disposed `_linkifier2`) when the terminal disposes
-      // the addon mid-teardown — that uncaught throw used to unmount the whole React
-      // tree (the "black screen" on group creation, and would also fire on node kill
-      // in production). Dispose the render addon FIRST, while the terminal is still
-      // alive (so the renderer can reset to DOM cleanly), then dispose the terminal.
-      // Every step is guarded so cleanup can never throw.
-      try {
-        canvasAddonRef.current?.dispose?.();
-      } catch {
-        /* addon-canvas dispose bug — safe to ignore, terminal is going away */
-      }
-      canvasAddonRef.current = null;
-      try {
-        webGLAddonRef.current?.dispose?.();
-      } catch {
-        /* ignore */
-      }
-      webGLAddonRef.current = null;
+      // Tear down xterm DEFENSIVELY. Every step is guarded so cleanup can never
+      // throw (a throw here could otherwise unmount the whole React tree).
       try {
         term.dispose();
       } catch {
@@ -445,8 +437,8 @@ export function usePty({
   }, []); // intentionally empty — runs once on mount
 
   const kill = useCallback(() => killRef.current(), []);
-  const activateWebGL = useCallback(() => activateWebGLRef.current(), []);
-  const deactivateWebGL = useCallback(() => deactivateWebGLRef.current(), []);
+  const focusRenderer = useCallback(() => focusRendererRef.current(), []);
+  const blurRenderer = useCallback(() => blurRendererRef.current(), []);
 
-  return { kill, activateWebGL, deactivateWebGL };
+  return { kill, focusRenderer, blurRenderer };
 }

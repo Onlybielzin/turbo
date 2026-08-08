@@ -265,14 +265,32 @@
   color: var(--agent-color, var(--muted));
 }
 
+/* [data-zooming] is set on .canvas-area for the duration of a pan/zoom gesture
+   (Canvas onMoveStart/onMoveEnd). During the gesture every node shows the cheap
+   LOD placeholder and hides its live xterm body, so ReactFlow's transform:scale
+   bitmap-scales light placeholder DOM instead of re-rasterizing N live terminal
+   grids on the CPU every frame — that simultaneous re-raster is what dropped the
+   canvas to ~30fps while zooming. On gesture end the attribute is cleared and the
+   already-mounted terminals repaint once. */
 .canvas-area[data-lod-far] .terminal-node__lod,
+.canvas-area[data-zooming] .terminal-node__lod,
 .terminal-node--hibernated .terminal-node__lod {
   display: flex;
 }
 
 .canvas-area[data-lod-far] .terminal-node__body,
+.canvas-area[data-zooming] .terminal-node__body,
 .terminal-node--hibernated .terminal-node__body {
   visibility: hidden;
+}
+
+/* Off-screen nodes: let the browser skip painting (and laying out) their whole
+   subtree until they scroll back into view. Node sizes vary a lot (child 620x420
+   vs group terminals 1120x780) and ReactFlow sets explicit width/height inline,
+   so no single contain-intrinsic-size hint fits — skip it and rely on the inline
+   box to reserve space. */
+.terminal-node--hibernated {
+  content-visibility: auto;
 }
 
 /* xterm.js overrides inside the node body */

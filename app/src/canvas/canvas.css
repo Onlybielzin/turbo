@@ -14,8 +14,10 @@
   justify-content: center;
   border-radius: 8px;
   border: 1px solid var(--node-border, rgba(255, 255, 255, 0.12));
-  background: rgba(20, 18, 16, 0.82);
-  backdrop-filter: blur(6px);
+  /* Solid-ish fill instead of backdrop-filter: blur() — the blur re-paints the
+     region behind it on every frame the live terminals stream, which dominated
+     paint time in profiling. A slightly more opaque background keeps legibility. */
+  background: rgba(20, 18, 16, 0.94);
   color: var(--muted, #b8b0a8);
   font-size: 17px;
   line-height: 1;
@@ -33,6 +35,29 @@
    Bottom-left readout of the current zoom %. The state pill flips between
    "ao vivo" and "placeholder" at the LOD threshold so you can read the exact
    zoom at which terminals collapse. */
+/* ── FPS HUD ──────────────────────────────────────────────────────────────
+   Live frame-rate readout, bottom-centre — the only free corner. Taken spots:
+   top-left = Toolbar, top-right = settings, top-centre = group tabs,
+   bottom-left = ReactFlow <Controls>, bottom-right = zoom indicator. */
+.fps-indicator {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 12px;
+  z-index: 10;
+  padding: 5px 10px;
+  border-radius: 8px;
+  background: rgba(20, 18, 16, 0.94);
+  border: 1px solid var(--node-border, rgba(255, 255, 255, 0.1));
+  font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e6e1dc;
+  pointer-events: none;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
 .zoom-indicator {
   position: absolute;
   right: 12px;
@@ -43,9 +68,9 @@
   gap: 8px;
   padding: 5px 10px;
   border-radius: 8px;
-  background: rgba(20, 18, 16, 0.82);
+  background: rgba(20, 18, 16, 0.94);
   border: 1px solid var(--node-border, rgba(255, 255, 255, 0.1));
-  backdrop-filter: blur(6px);
+  /* No backdrop-filter: blur() — see .canvas-settings-btn note above. */
   font-family: ui-monospace, "JetBrains Mono", Menlo, monospace;
   font-size: 12px;
   font-weight: 700;

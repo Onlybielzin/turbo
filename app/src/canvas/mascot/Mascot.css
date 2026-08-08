@@ -18,3 +18,12 @@
   transform-origin: center center;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
 }
+
+/* Mirror the terminal: hide the mascot while the canvas is mid pan/zoom gesture
+   ([data-zooming]) or far-zoom LOD ([data-lod-far]). The sprite's drop-shadow
+   filter is expensive to re-rasterize under transform:scale, and the JS ticker
+   is already paused in these states (Mascot.tsx) — so hide it entirely. */
+.canvas-area[data-zooming] .turbo-mascot,
+.canvas-area[data-lod-far] .turbo-mascot {
+  visibility: hidden;
+}
