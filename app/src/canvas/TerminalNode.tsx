@@ -6,7 +6,8 @@
  * - Body: --panel background, xterm fills flush
  * - Node frame: 1px --node-border, border-radius 6px; focused → --node-border-focused
  * - Kill: no confirmation, fade-out 150ms then remove
- * - Renderer: CanvasAddon default; WebGL on focus; max 1 WebGL context at a time
+ * - Renderer: cheap Canvas while unfocused, crisp DOM renderer while focused
+ *   (onFocus/onBlur → focusRenderer/blurRenderer from usePty)
  * - React.memo to prevent cascata re-render
  */
 import { memo, useRef, useCallback, useEffect, useState } from "react";
@@ -120,7 +121,7 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
     [id, setPtyId]
   );
 
-  const { kill, activateWebGL, deactivateWebGL } = usePty({
+  const { kill, focusRenderer, blurRenderer } = usePty({
     nodeId: id,
     hostRef,
     command: data.command,
@@ -148,12 +149,12 @@ function TerminalNodeInner({ id, data, selected }: TerminalNodeProps) {
   }, [kill, removeNode, id]);
 
   const handleFocus = useCallback(() => {
-    activateWebGL();
-  }, [activateWebGL]);
+    focusRenderer();
+  }, [focusRenderer]);
 
   const handleBlur = useCallback(() => {
-    deactivateWebGL();
-  }, [deactivateWebGL]);
+    blurRenderer();
+  }, [blurRenderer]);
 
   // Handle chip click: find the group this terminal belongs to and open a viewer.
   const handleChipClick = useCallback(

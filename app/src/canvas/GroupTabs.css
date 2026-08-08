@@ -12,8 +12,10 @@
   max-width: 70vw;
   overflow-x: auto;
   padding: 4px;
-  background: rgba(22, 21, 20, 0.85);
-  backdrop-filter: blur(8px);
+  /* Solid-ish fill instead of backdrop-filter: blur() — the blur forced a
+     continuous repaint of the area behind this always-on top bar while the
+     terminals streamed (dominant paint cost in profiling). */
+  background: rgba(22, 21, 20, 0.96);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);

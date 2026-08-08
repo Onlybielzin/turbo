@@ -31,6 +31,7 @@ import "./canvas.css";
 import { useCanvasStore, nextAgentColor } from "./store";
 import { useSettingsStore } from "./settings";
 import { TerminalNode } from "./TerminalNode";
+import { FpsMeter } from "./FpsMeter";
 import { GroupFrame } from "./GroupFrame";
 import { ViewerNode } from "./ViewerNode";
 import { Toolbar } from "./Toolbar";
@@ -187,6 +188,31 @@ function CanvasInner() {
     [applyZoom]
   );
 
+  // Gesture-settle suspend (T1): while a pan/zoom gesture is in flight, mark the
+  // canvas [data-zooming] so CSS collapses every node to its cheap LOD placeholder
+  // and hides the live xterm body. ReactFlow zooms via transform:scale() on the
+  // whole viewport, which otherwise forces all visible terminals to re-rasterize
+  // on the CPU every frame (→ ~30fps). Scaling light placeholders instead keeps
+  // the gesture smooth; the flag is cleared a couple of frames after the gesture
+  // ends so the last scale frame settles before the terminals repaint once.
+  const zoomClearRaf = useRef<number | null>(null);
+  const handleMoveStart = useCallback(() => {
+    if (zoomClearRaf.current !== null) {
+      cancelAnimationFrame(zoomClearRaf.current);
+      zoomClearRaf.current = null;
+    }
+    areaRef.current?.setAttribute("data-zooming", "");
+  }, []);
+  const handleMoveEnd = useCallback(() => {
+    if (zoomClearRaf.current !== null) cancelAnimationFrame(zoomClearRaf.current);
+    zoomClearRaf.current = requestAnimationFrame(() => {
+      zoomClearRaf.current = requestAnimationFrame(() => {
+        zoomClearRaf.current = null;
+        areaRef.current?.removeAttribute("data-zooming");
+      });
+    });
+  }, []);
+
   // Re-evaluate LOD whenever the user changes the threshold (zoom hasn't moved,
   // so onMove wouldn't fire) — read the live viewport and re-apply.
   const lodZoom = useSettingsStore((s) => s.lodZoom);
@@ -245,6 +271,10 @@ function CanvasInner() {
           else normalizeGroups();
         }}
         onMove={handleMove}
+        onMoveStart={handleMoveStart}
+        onMoveEnd={handleMoveEnd}
+        // Skip rendering (and painting) nodes/edges outside the viewport.
+        onlyRenderVisibleElements
         snapToGrid={snapActive}
         snapGrid={[24, 24]}
         defaultEdgeOptions={defaultEdgeOptions}
@@ -285,6 +315,8 @@ function CanvasInner() {
         <span className="zoom-indicator__state zoom-indicator__state--live">ao vivo</span>
         <span className="zoom-indicator__state zoom-indicator__state--lod">placeholder</span>
       </div>
+      {/* Live FPS readout (bottom-left) for gauging canvas smoothness. */}
+      <FpsMeter />
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {isEmpty && (
         <div className="canvas-empty-state">

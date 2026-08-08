@@ -42,6 +42,45 @@ const EVOLVE_MS = 1600;
 const LOOPS_BEFORE_SWITCH = 2;
 
 export function Mascot({ level, working = false, size = 76 }: MascotProps) {
+  // Pause the frame ticker while the mascot is scrolled off-screen — otherwise
+  // its sprite repaints at FPS forever on every group card, even ones nobody can
+  // see. An IntersectionObserver flips `visible`; the ticker keys off it.
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => setVisible(entry.isIntersecting),
+      { root: null }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  // Freeze the sprite while the canvas is mid pan/zoom gesture ([data-zooming])
+  // or collapsed to far-zoom LOD ([data-lod-far]) — the same states that swap
+  // terminals to their cheap placeholder. A 12fps sprite repainting on every
+  // group card during a zoom gesture is exactly the paint we're cutting; CSS
+  // also hides the sprite in these states (see Mascot.css) so it doesn't
+  // re-rasterize under transform:scale, mirroring the terminal body.
+  const [frozen, setFrozen] = useState(false);
+  useEffect(() => {
+    const area = rootRef.current?.closest(".canvas-area");
+    if (!area) return;
+    const read = () =>
+      setFrozen(
+        area.hasAttribute("data-zooming") || area.hasAttribute("data-lod-far")
+      );
+    read();
+    const mo = new MutationObserver(read);
+    mo.observe(area, {
+      attributes: true,
+      attributeFilter: ["data-zooming", "data-lod-far"],
+    });
+    return () => mo.disconnect();
+  }, []);
+
   // One-shot evolution when the form changes (level crosses a x0→x1 boundary).
   const [evolveSrc, setEvolveSrc] = useState<string | null>(null);
   const prevLevel = useRef(Math.floor(level) || 1);
@@ -98,6 +137,10 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
   }, [evolveSrc]);
 
   useEffect(() => {
+    // Off-screen, or frozen (mid pan/zoom gesture / far-zoom LOD), and not
+    // mid-evolution → don't repaint. The rare one-shot evolution always plays
+    // (it's short); the ticker resumes when visible/unfrozen again.
+    if ((!visible || frozen) && !oneShot) return;
     const id = setInterval(() => {
       setFrame((f) => {
         if (oneShot) return Math.min(f + 1, FRAME_COUNT - 1);
@@ -129,12 +172,13 @@ export function Mascot({ level, working = false, size = 76 }: MascotProps) {
       });
     }, 1000 / FPS);
     return () => clearInterval(id);
-  }, [oneShot]);
+  }, [oneShot, visible, frozen]);
 
   const scale = size / FRAME_H;
 
   return (
     <div
+      ref={rootRef}
       className={`turbo-mascot${oneShot ? " turbo-mascot--evolving" : ""}`}
       style={{ width: size, height: size }}
       title={`Turbo — Nível ${level}${working ? " (trabalhando)" : ""}`}
