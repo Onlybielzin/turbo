@@ -8,7 +8,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 
-export type ShortcutAction = "autoGrid" | "nextGroup" | "prevGroup";
+export type ShortcutAction = "autoGrid" | "gridTerminals" | "nextGroup" | "prevGroup";
 
 export interface KeyBinding {
   key: string; // KeyboardEvent.key, e.g. "g", "Tab"
@@ -26,12 +26,14 @@ export interface ShortcutMeta {
 /** Rebindable actions, in display order. */
 export const SHORTCUT_ACTIONS: ShortcutMeta[] = [
   { id: "autoGrid", label: "Organizar grupos em grade (Auto-grid)" },
+  { id: "gridTerminals", label: "Organizar terminais do grupo em grade (sem sobrepor)" },
   { id: "nextGroup", label: "Ir para o próximo grupo" },
   { id: "prevGroup", label: "Ir para o grupo anterior" },
 ];
 
 export const DEFAULT_BINDINGS: Record<ShortcutAction, KeyBinding> = {
   autoGrid: { key: "g", ctrl: true, shift: false, alt: false, meta: false },
+  gridTerminals: { key: "g", ctrl: false, shift: false, alt: true, meta: false },
   nextGroup: { key: "Tab", ctrl: false, shift: false, alt: true, meta: false },
   prevGroup: { key: "Tab", ctrl: false, shift: true, alt: true, meta: false },
 };

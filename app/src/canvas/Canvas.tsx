@@ -164,7 +164,7 @@ function CanvasInner() {
   // CSS collapses terminal bodies to placeholders when far out. The threshold is
   // user-configurable (settings store) and read live. A ref-gated diff avoids
   // touching the DOM on every frame of the zoom gesture.
-  const { getViewport } = useReactFlow();
+  const { getViewport, setViewport } = useReactFlow();
   const areaRef = useRef<HTMLDivElement>(null);
   const lodFarRef = useRef(false);
   const zoomLabelRef = useRef<HTMLSpanElement>(null);
@@ -193,6 +193,39 @@ function CanvasInner() {
   useEffect(() => {
     applyZoom(getViewport().zoom);
   }, [lodZoom, applyZoom, getViewport]);
+
+  // Ctrl + wheel zooms the canvas even when the pointer is over a terminal.
+  // Terminals carry ReactFlow's `nowheel` class so xterm can scroll its buffer —
+  // which also blocks ReactFlow's own ctrl+wheel zoom there. We restore zoom by
+  // intercepting the wheel in the capture phase (before xterm gets it),
+  // suppressing the terminal scroll, and zooming toward the cursor ourselves.
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      const target = e.target as HTMLElement | null;
+      // Only take over inside a terminal/nowheel region; elsewhere the pane's
+      // native zoomOnScroll already handles ctrl+wheel.
+      if (!target?.closest(".nowheel")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = area.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const vp = getViewport();
+      // Flow point under the cursor — kept fixed while the zoom changes.
+      const fx = (sx - vp.x) / vp.zoom;
+      const fy = (sy - vp.y) / vp.zoom;
+      const factor = Math.exp(-e.deltaY * 0.002);
+      const zoom = Math.min(4, Math.max(0.1, vp.zoom * factor));
+      setViewport({ x: sx - fx * zoom, y: sy - fy * zoom, zoom });
+      applyZoom(zoom);
+    };
+    area.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () =>
+      area.removeEventListener("wheel", onWheel, { capture: true } as EventListenerOptions);
+  }, [getViewport, setViewport, applyZoom]);
 
   const isEmpty = nodes.length === 0;
 

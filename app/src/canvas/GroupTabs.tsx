@@ -4,10 +4,11 @@
  *
  * - Clicking a tab pans/zooms the canvas to frame that group (fitView).
  * - Ctrl+1..9 jumps to the Nth group.
- * - Alt+Tab / Alt+Shift+Tab, Ctrl+E / Ctrl+Q, or Ctrl+→ / Ctrl+← cycles to the
- *   next / previous group (tab order).
- * - Ctrl+↑ / Ctrl+↓ jumps to the spatially nearest group above / below.
+ * - Alt+Tab / Alt+Shift+Tab, Ctrl/Alt+E / Ctrl/Alt+Q, or Ctrl/Alt+→ / Ctrl/Alt+←
+ *   cycles to the next / previous group (tab order).
+ * - Ctrl/Alt+↑ / Ctrl/Alt+↓ jumps to the spatially nearest group above / below.
  * - Auto-grid button / Ctrl+G lays all groups out in a neat aligned grid.
+ * - Alt+G lays the focused group's terminals out in a grid with no overlap.
  *
  * Shortcuts are captured on window (capture phase) so they work even while a
  * terminal has focus. Must live inside <ReactFlowProvider> (Canvas) for useReactFlow.
@@ -29,6 +30,7 @@ function groupCenter(n: AppNode): { x: number; y: number } {
 export function GroupTabs() {
   const nodes = useCanvasStore((s) => s.nodes);
   const autoGridGroups = useCanvasStore((s) => s.autoGridGroups);
+  const autoGridTerminals = useCanvasStore((s) => s.autoGridTerminals);
   const groups = nodes.filter((n) => n.type === "group");
   const { fitView } = useReactFlow();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -48,6 +50,22 @@ export function GroupTabs() {
     // Let the store commit the new positions, then frame all groups.
     requestAnimationFrame(() => void fitView({ duration: 500, padding: 0.12 }));
   }, [autoGridGroups, fitView]);
+
+  // Grid the terminals of the focused group (or every group if none focused),
+  // then frame the result. Alt+G.
+  const doGridTerminals = useCallback(() => {
+    const activeId = activeIdRef.current;
+    const gs = useCanvasStore.getState().nodes.filter((n) => n.type === "group");
+    const focused = activeId && gs.some((g) => g.id === activeId) ? activeId : null;
+    autoGridTerminals(focused ?? undefined);
+    requestAnimationFrame(() =>
+      void fitView(
+        focused
+          ? { nodes: [{ id: focused }], duration: 400, padding: 0.18 }
+          : { duration: 500, padding: 0.12 }
+      )
+    );
+  }, [autoGridTerminals, fitView]);
 
   // Cycle focus to the next (dir=+1) or previous (dir=-1) group, wrapping around.
   const cycleGroup = useCallback(
@@ -105,9 +123,17 @@ export function GroupTabs() {
         doAutoGrid();
         return;
       }
-      // Ctrl+E / Ctrl+→ → next group; Ctrl+Q / Ctrl+← → previous group.
-      // (Arrows use Ctrl so a focused terminal still gets plain arrow keys.)
-      if (e.ctrlKey && !e.altKey && !e.metaKey) {
+      // Grid the focused group's terminals (default Alt+G)
+      if (matchBinding(e, bindings.gridTerminals)) {
+        e.preventDefault();
+        e.stopPropagation();
+        doGridTerminals();
+        return;
+      }
+      // Ctrl/Alt+E / Ctrl/Alt+→ → next group; Ctrl/Alt+Q / Ctrl/Alt+← → previous.
+      // Ctrl/Alt+↑ / Ctrl/Alt+↓ → spatially nearest group above / below.
+      // (A modifier is required so a focused terminal still gets plain keys.)
+      if ((e.ctrlKey || e.altKey) && !e.metaKey) {
         const k = e.key.toLowerCase();
         const isNextArrow = k === "e" || k === "arrowright";
         const isPrevArrow = k === "q" || k === "arrowleft";
@@ -147,7 +173,7 @@ export function GroupTabs() {
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [focusGroup, doAutoGrid, cycleGroup, focusSpatial]);
+  }, [focusGroup, doAutoGrid, doGridTerminals, cycleGroup, focusSpatial]);
 
   if (groups.length === 0) return null;
 

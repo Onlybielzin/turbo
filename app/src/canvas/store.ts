@@ -247,6 +247,10 @@ interface CanvasState {
   resolveGroupOverlap: (groupId: string) => void;
   /** Reposition all groups into a neat aligned grid (Auto-grid / Ctrl+G). */
   autoGridGroups: () => void;
+  /** Lay out a group's child nodes (terminals/viewers) in a uniform grid with no
+   *  overlap (Alt+G). Pass a groupId to target one group, or omit to grid all
+   *  groups. Grows each group to fit and separates any groups that now collide. */
+  autoGridTerminals: (groupId?: string) => void;
 }
 
 // ── Group auto-sizing ─────────────────────────────────────────────────────────
@@ -847,6 +851,45 @@ export const useCanvasStore = create<CanvasState>()(
         posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n
       ),
     });
+  },
+
+  autoGridTerminals: (groupId?: string) => {
+    const nodes = get().nodes;
+    const targetGroups = nodes.filter(
+      (n) => n.type === "group" && (!groupId || n.id === groupId)
+    );
+    if (targetGroups.length === 0) return;
+    const gap = GROUP_PAD; // 32px breathing room between children
+    const posMap = new Map<string, { x: number; y: number }>();
+    for (const g of targetGroups) {
+      const children = nodes.filter((c) => c.parentId === g.id);
+      if (children.length === 0) continue;
+      // Stable order: current reading order (top-to-bottom, then left-to-right)
+      // so gridding rearranges predictably instead of shuffling terminals.
+      const ordered = [...children].sort(
+        (a, b) => a.position.y - b.position.y || a.position.x - b.position.x
+      );
+      // Uniform cells sized to the largest child → guaranteed no overlap even
+      // with mixed terminal/viewer sizes.
+      const cellW = Math.max(...ordered.map((c) => nodeSize(c).w));
+      const cellH = Math.max(...ordered.map((c) => nodeSize(c).h));
+      const cols = Math.max(1, Math.ceil(Math.sqrt(ordered.length)));
+      ordered.forEach((c, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        posMap.set(c.id, {
+          x: GROUP_PAD + col * (cellW + gap),
+          y: GROUP_TOP + row * (cellH + gap),
+        });
+      });
+    }
+    if (posMap.size === 0) return;
+    const moved = nodes.map((n) =>
+      posMap.has(n.id) ? { ...n, position: posMap.get(n.id)! } : n
+    );
+    // Grow each group to contain its re-laid children, then push apart any
+    // groups that grew into a neighbour.
+    set({ nodes: separateGroups(fitGroups(moved)) });
   },
     }),
     {
