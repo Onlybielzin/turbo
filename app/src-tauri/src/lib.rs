@@ -375,6 +375,63 @@ fn pty_write(manager: State<PtyManagerState>, id: u32, data: String) -> Result<(
     Ok(())
 }
 
+/// Paste from the Wayland clipboard into a pty.
+///
+/// Reads the clipboard with `wl-paste` (the system clipboard, which the N3X0
+/// manager and any Ctrl+C fill) instead of the frontend `navigator.clipboard`,
+/// because WebKitGTK can't hand the webview image bytes. Only IMAGES are handled
+/// here (text is left to xterm's native paste, else it lands twice): the image is
+/// saved to a temp PNG and its path written to the pty — Claude Code attaches
+/// images referenced by a file path.
+#[tauri::command]
+fn pty_paste(manager: State<PtyManagerState>, id: u32) -> Result<(), String> {
+    use std::process::Command;
+
+    let types = Command::new("wl-paste")
+        .arg("--list-types")
+        .output()
+        .map_err(|e| format!("wl-paste --list-types: {e}"))?;
+    let types = String::from_utf8_lossy(&types.stdout);
+    let image_mime = types
+        .lines()
+        .map(|t| t.trim())
+        .find(|t| *t == "image/png")
+        .or_else(|| types.lines().map(|t| t.trim()).find(|t| t.starts_with("image/")));
+
+    // ONLY images are pasted through the backend. Text is left to xterm's own
+    // native paste (the browser 'paste' event fired on Ctrl+V/Ctrl+Shift+V) —
+    // writing it here too made every text paste land twice.
+    let Some(mime) = image_mime else {
+        return Ok(());
+    };
+    let bytes = Command::new("wl-paste")
+        .arg("--type")
+        .arg(mime)
+        .output()
+        .map_err(|e| format!("wl-paste image: {e}"))?
+        .stdout;
+    if bytes.is_empty() {
+        return Ok(());
+    }
+    let ext = mime.rsplit('/').next().unwrap_or("png");
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("turbo-paste-{ts}.{ext}"));
+    std::fs::write(&path, &bytes).map_err(|e| format!("save image: {e}"))?;
+    // A trailing space lets Claude Code detect the path token as an attachment.
+    let data = format!("{} ", path.to_string_lossy());
+    let mut map = manager.0.sessions.lock().unwrap();
+    let session = map.get_mut(&id).ok_or("pty not found")?;
+    session
+        .writer
+        .write_all(data.as_bytes())
+        .map_err(|e| e.to_string())?;
+    session.writer.flush().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Resize a pty (sends SIGWINCH to the child).
 #[tauri::command]
 fn pty_resize(
@@ -613,6 +670,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             pty_spawn,
             pty_write,
+            pty_paste,
             pty_resize,
             pty_kill,
             sync_agents,
