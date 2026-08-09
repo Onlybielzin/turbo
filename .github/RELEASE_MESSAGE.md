@@ -1,8 +1,6 @@
-🚀 **Turbo v0.1.18 disponível!**
+🚀 **Turbo v0.1.19 disponível!**
 
-- Os agentes agora trabalham em equipe **ao vivo**: dá pra ver os subagentes abertos em terminais no canvas enquanto o agente principal coordena e recebe os resultados de volta.
-- Agora dá pra **colar imagens** direto no terminal (Ctrl+V) — útil pra mandar um print pro Claude.
-- Corrigido: terminais que, ao rodar um comando, reiniciavam sozinhos e apareciam vazios.
-- Corrigido: com o canvas afastado (zoom), selecionar texto no terminal agora acompanha o mouse certinho, sem pegar a linha de cima.
+- Agora dá pra **colar imagem** no terminal com Ctrl+V — o print vai direto pro Claude como anexo.
+- Corrigido: colar texto no terminal não duplica mais o conteúdo.
 
-Baixar: https://github.com/Onlybielzin/turbo/releases/tag/v0.1.18
+Baixar: https://github.com/Onlybielzin/turbo/releases/tag/v0.1.19
